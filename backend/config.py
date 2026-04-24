@@ -4,6 +4,14 @@ from pydantic_settings import BaseSettings
 from pydantic import field_validator
 
 
+def _resolve_env(*names: str, default: str | None = None) -> str | None:
+    for name in names:
+        value = os.getenv(name)
+        if value is not None and str(value).strip():
+            return value
+    return default
+
+
 def _coerce_debug(value) -> bool:
     if isinstance(value, bool):
         return value
@@ -16,8 +24,14 @@ def _coerce_debug(value) -> bool:
 
 class Settings(BaseSettings):
     # MongoDB
-    MONGODB_URL: str = os.getenv("MONGODB_URL", "mongodb://localhost:27017")
-    DATABASE_NAME: str = "ecommerce_db"
+    MONGODB_URL: str = _resolve_env(
+        "MONGODB_URL",
+        "MONGODB_URI",
+        "MONGO_URL",
+        "MONGO_URI",
+        default="mongodb://localhost:27017"
+    )
+    DATABASE_NAME: str = _resolve_env("DATABASE_NAME", "MONGODB_DB", default="ecommerce_db")
     
     # JWT
     SECRET_KEY: str = os.getenv("SECRET_KEY", "your-secret-key-change-in-production")
@@ -29,9 +43,9 @@ class Settings(BaseSettings):
     PURCHASE_LIMIT_PER_MINUTE: int = 5  # ป้องกัน double purchase
     
     # Server
-    DEBUG: bool = True
-    HOST: str = "0.0.0.0"
-    PORT: int = 8000
+    DEBUG: bool = os.getenv("DEBUG", True)
+    HOST: str = os.getenv("HOST", "0.0.0.0")
+    PORT: int = int(os.getenv("PORT", "8000"))
 
     @field_validator("DEBUG", mode="before")
     @classmethod
