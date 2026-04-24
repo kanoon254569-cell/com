@@ -13,11 +13,8 @@ COPY requirements.txt .
 # Install Python dependencies
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy application code and static assets needed at runtime
+# Copy backend code
 COPY backend/ ./backend/
-COPY frontend/ ./frontend/
-COPY frontend-vue/dist/ ./frontend-vue/dist/
-COPY Adidas\ US\ Sales\ Datasets.xlsx ./Adidas US Sales Datasets.xlsx
 
 # Expose port
 EXPOSE 8000

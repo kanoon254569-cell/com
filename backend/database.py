@@ -5,7 +5,6 @@ from typing import List, Optional, Dict, Any
 from datetime import datetime, timedelta
 from bson import ObjectId
 import uuid
-import os
 
 class Database:
     client = None
@@ -15,23 +14,9 @@ db = Database()
 
 async def connect_to_mongo():
     """Connect to MongoDB"""
-    db.client = AsyncIOMotorClient(
-        settings.MONGODB_URL,
-        serverSelectionTimeoutMS=5000
-    )
+    db.client = AsyncIOMotorClient(settings.MONGODB_URL)
     db.db = db.client[settings.DATABASE_NAME]
-    try:
-        await db.client.admin.command("ping")
-        print(f"✅ Connected to MongoDB: {settings.DATABASE_NAME}")
-    except Exception as exc:
-        using_local_default = (
-            settings.MONGODB_URL == "mongodb://localhost:27017"
-            and not any(os.getenv(name) for name in ("MONGODB_URL", "MONGODB_URI", "MONGO_URL", "MONGO_URI"))
-        )
-        if using_local_default:
-            print("⚠️ MongoDB env is not set. Render cannot use localhost:27017.")
-        print(f"❌ MongoDB connection failed: {exc}")
-        raise
+    print(f"✅ Connected to MongoDB: {settings.DATABASE_NAME}")
 
 async def close_mongo_connection():
     """Close MongoDB connection"""
