@@ -4,6 +4,7 @@ from .config import settings
 from typing import List, Optional, Dict, Any
 from datetime import datetime, timedelta
 from bson import ObjectId
+import certifi
 import uuid
 import os
 
@@ -17,7 +18,8 @@ async def connect_to_mongo():
     """Connect to MongoDB"""
     db.client = AsyncIOMotorClient(
         settings.MONGODB_URL,
-        serverSelectionTimeoutMS=5000
+        serverSelectionTimeoutMS=5000,
+        tlsCAFile=certifi.where()
     )
     db.db = db.client[settings.DATABASE_NAME]
     try:
