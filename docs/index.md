@@ -74,13 +74,9 @@ python -m uvicorn backend.main:app --reload
 | Component | URL |
 |-----------|-----|
 | Admin Dashboard | `/` |
-| Login Page | `/` |
-| Admin Dashboard | `/admin-dashboard.html` |
 | API Documentation | `/docs` |
 | Provider Panel | `/provider` |
 | User Store | `/store` |
-| Provider Panel | `/provider-panel.html` |
-| User Store | `/user-store.html` |
 
 ---
 
