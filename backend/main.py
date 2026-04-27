@@ -1465,14 +1465,15 @@ if os.path.exists(frontend_path):
 
 @app.get("/")
 async def serve_root():
-    """Serve Flow Studio at root, fallback to login page"""
+    """Serve login page at root"""
+    login_file = os.path.join(frontend_path, "login.html")
+    if os.path.exists(login_file):
+        return FileResponse(login_file, media_type="text/html")
+
     studio_file = os.path.join(frontend_vue_dist_path, "index.html")
     if os.path.exists(studio_file):
         return FileResponse(studio_file, media_type="text/html")
 
-    login_file = os.path.join(frontend_path, "login.html")
-    if os.path.exists(login_file):
-        return FileResponse(login_file, media_type="text/html")
     raise HTTPException(status_code=404, detail="Not Found")
 
 @app.get("/login")

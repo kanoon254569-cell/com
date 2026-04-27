@@ -1,10 +1,11 @@
 """Configuration Management"""
 import os
+from typing import Optional
 from pydantic_settings import BaseSettings
 from pydantic import field_validator
 
 
-def _resolve_env(*names: str, default: str | None = None) -> str | None:
+def _resolve_env(*names: str, default: Optional[str] = None) -> Optional[str]:
     for name in names:
         value = os.getenv(name)
         if value is not None and str(value).strip():
