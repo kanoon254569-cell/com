@@ -219,6 +219,41 @@ async def build_admin_studio_snapshot() -> dict:
         "orders": [serialize_order(order, user_lookup, product_lookup) for order in orders],
     }
 
+
+async def ensure_default_users() -> None:
+    """Seed default users for first-time deployments."""
+    existing_users = await db.db["users"].count_documents({})
+    if existing_users > 0:
+        print(f"✅ Database already has {existing_users} users")
+        return
+
+    default_users = [
+        ("admin@ecommerce.local", "admin", "admin123", "admin"),
+        ("provider@ecommerce.local", "provider", "Provider123", "provider"),
+        ("user@ecommerce.local", "user", "User123456", "user"),
+    ]
+
+    seeded_users = []
+    now = datetime.utcnow()
+    for email, username, password, role in default_users:
+        seeded_users.append(
+            {
+                "email": email,
+                "username": username,
+                "password_hash": bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode(),
+                "role": role,
+                "is_active": True,
+                "created_at": now,
+                "updated_at": now,
+            }
+        )
+
+    await db.db["users"].insert_many(seeded_users)
+    print("✅ Seeded default users for first deployment")
+    print("   Admin: admin@ecommerce.local / admin123")
+    print("   Provider: provider@ecommerce.local / Provider123")
+    print("   User: user@ecommerce.local / User123456")
+
 # ===================== LIFESPAN =====================
 
 @asynccontextmanager
@@ -226,6 +261,7 @@ async def lifespan(app: FastAPI):
     # Startup
     await connect_to_mongo()
     print("🚀 FastAPI Server Started")
+    await ensure_default_users()
     
     # Auto-load Excel data on startup
     try:
