@@ -29,7 +29,6 @@ from bson import ObjectId
 import uuid
 import bcrypt
 
-COMMISSION_RATE = 0.08
 VAT_RATE = 0.07
 TAX_LABEL = "VAT"
 DISCOUNT_RULES = {
@@ -57,11 +56,11 @@ def calculate_order_pricing(items: List[dict], discount_code: Optional[str] = No
     subtotal = round_money(sum(item["quantity"] * item["price_at_purchase"] for item in items))
     normalized_code, discount_rate = resolve_discount_rate(subtotal, discount_code)
     discount_amount = round_money(subtotal * discount_rate)
-    taxable_amount = round_money(max(subtotal - discount_amount, 0))
-    commission_amount = round_money(taxable_amount * COMMISSION_RATE)
-    tax_amount = round_money(taxable_amount * VAT_RATE)
-    grand_total = round_money(taxable_amount + tax_amount)
-    provider_net_amount = round_money(taxable_amount - commission_amount)
+    grand_total = round_money(max(subtotal - discount_amount, 0))
+    taxable_amount = round_money(grand_total / (1 + VAT_RATE)) if grand_total else 0
+    tax_amount = round_money(grand_total - taxable_amount)
+    commission_amount = 0.0
+    provider_net_amount = grand_total
 
     return {
         "currency": "USD",
@@ -70,14 +69,14 @@ def calculate_order_pricing(items: List[dict], discount_code: Optional[str] = No
         "discount_rate": discount_rate,
         "discount_amount": discount_amount,
         "taxable_amount": taxable_amount,
-        "commission_rate": COMMISSION_RATE,
+        "commission_rate": 0,
         "commission_amount": commission_amount,
         "tax_label": TAX_LABEL,
         "tax_rate": VAT_RATE,
         "tax_amount": tax_amount,
         "grand_total": grand_total,
         "provider_net_amount": provider_net_amount,
-        "platform_fee_amount": commission_amount,
+        "platform_fee_amount": 0,
     }
 
 def build_invoice_metadata() -> dict:
@@ -161,6 +160,40 @@ def serialize_product(product: dict) -> dict:
         "image_url": product.get("image_url", "") or "",
         "provider_id": product.get("provider_id"),
     }
+
+
+async def enrich_products_with_provider_names(products: List[dict]) -> List[dict]:
+    provider_ids = {
+        str(product.get("provider_id"))
+        for product in products
+        if product.get("provider_id")
+    }
+    provider_lookup = {}
+    for provider_id in provider_ids:
+        try:
+            provider = await UserDB.get_user_by_id(provider_id)
+        except Exception:
+            provider = None
+        if provider:
+            provider_lookup[provider_id] = (
+                provider.get("username")
+                or provider.get("name")
+                or provider.get("email", "").split("@")[0]
+                or provider_id
+            )
+        else:
+            provider_lookup[provider_id] = provider_id
+
+    enriched = []
+    for product in products:
+        item = dict(product)
+        provider_id = str(item.get("provider_id")) if item.get("provider_id") else None
+        item["provider_id"] = provider_id
+        item["provider_name"] = provider_lookup.get(provider_id, provider_id or "Unknown provider")
+        if "_id" in item:
+            item["_id"] = str(item["_id"])
+        enriched.append(item)
+    return enriched
 
 def serialize_order(order: dict, user_lookup: dict, product_lookup: dict) -> dict:
     items = []
@@ -1056,7 +1089,12 @@ async def provider_sales_history(
     product_lookup = {str(product["_id"]): product for product in products}
     product_ids = set(product_lookup.keys())
 
-    query = {"provider_id": {"$in": provider_scopes}}
+    query = {
+        "$or": [
+            {"provider_id": {"$in": provider_scopes}},
+            {"provider_ids": {"$in": provider_scopes}},
+        ]
+    }
     attach_period_filter(query, "created_at", day=day, month=month, year=year)
     orders = await db.db["orders"].find(query).sort("created_at", -1).to_list(None)
 
@@ -1145,24 +1183,30 @@ async def provider_restock_history(
 # ===================== USER SHOPPING ROUTES =====================
 
 @app.get("/api/user/products")
-async def user_browse_products(category: Optional[str] = None):
+async def user_browse_products(
+    category: Optional[str] = None,
+    provider_id: Optional[str] = None
+):
     """User: Browse products"""
     from .database import db
     
     query = {}
     if category:
         query["category"] = category
+    if provider_id:
+        query["provider_id"] = provider_id
     
     products = await db.db["products"].find(query).to_list(None)
-    
-    # Convert ObjectId to string for JSON serialization
-    for product in products:
-        product["_id"] = str(product["_id"])
+    products = await enrich_products_with_provider_names(products)
     
     return {"products": products}
 
 @app.get("/api/user/search")
-async def user_search_products(q: Optional[str] = None, category: Optional[str] = None):
+async def user_search_products(
+    q: Optional[str] = None,
+    category: Optional[str] = None,
+    provider_id: Optional[str] = None
+):
     """User: Search products by name, SKU, or description"""
     from .database import db
     
@@ -1179,12 +1223,11 @@ async def user_search_products(q: Optional[str] = None, category: Optional[str] 
     
     if category:
         query["category"] = category
+    if provider_id:
+        query["provider_id"] = provider_id
     
     products = await db.db["products"].find(query).to_list(None)
-    
-    # Convert ObjectId to string for JSON serialization
-    for product in products:
-        product["_id"] = str(product["_id"])
+    products = await enrich_products_with_provider_names(products)
     
     return {
         "query": q,
@@ -1204,7 +1247,25 @@ async def user_get_product(product_id: str):
             detail="Product not found"
         )
     
-    return product
+    enriched = await enrich_products_with_provider_names([product])
+    return enriched[0]
+
+
+@app.get("/api/user/providers")
+async def user_get_providers():
+    """User: Get providers with active catalog items."""
+    raw_products = await db.db["products"].find({}).to_list(None)
+    products = await enrich_products_with_provider_names(raw_products)
+    providers = {}
+    for product in products:
+        provider_id = product.get("provider_id")
+        if not provider_id:
+            continue
+        providers[provider_id] = {
+            "provider_id": provider_id,
+            "provider_name": product.get("provider_name", provider_id),
+        }
+    return {"providers": list(providers.values())}
 
 @app.post("/api/user/orders/preview")
 async def user_preview_order(
@@ -1212,6 +1273,16 @@ async def user_preview_order(
     current_user: str = Depends(get_current_user)
 ):
     """Preview billing summary before creating an order"""
+    provider_ids = []
+    seen_provider_ids = set()
+    for item in order.items:
+        product = await ProductDB.get_product_by_id(item.product_id)
+        if not product:
+            continue
+        provider_id = product.get("provider_id")
+        if provider_id and provider_id not in seen_provider_ids:
+            provider_ids.append(provider_id)
+            seen_provider_ids.add(provider_id)
     pricing = calculate_order_pricing(
         [item.dict() for item in order.items],
         order.discount_code
@@ -1222,6 +1293,8 @@ async def user_preview_order(
             "currency": pricing["currency"],
             "tax_label": pricing["tax_label"],
         }
+        ,
+        "provider_ids": provider_ids
     }
 
 @app.post("/api/user/orders")
@@ -1309,13 +1382,27 @@ async def user_create_order(
         billing = build_invoice_metadata()
         total_amount = pricing["grand_total"]
         
-        # Get provider_id from first product
-        first_product = await ProductDB.get_product_by_id(order.items[0].product_id)
-        provider_id = first_product.get("provider_id")
+        provider_ids = []
+        provider_item_map = {}
+        for item in order.items:
+            product = await ProductDB.get_product_by_id(item.product_id)
+            provider_id = product.get("provider_id") if product else None
+            if provider_id:
+                provider_ids.append(provider_id)
+                provider_item_map.setdefault(provider_id, []).append(item.product_id)
+        unique_provider_ids = list(dict.fromkeys(provider_ids))
+        primary_provider_id = unique_provider_ids[0] if unique_provider_ids else None
         
         order_data = {
             "user_id": current_user,
-            "provider_id": provider_id,
+            "provider_id": primary_provider_id,
+            "provider_ids": unique_provider_ids,
+            "provider_item_map": provider_item_map,
+            "provider_statuses": {
+                provider_id: "pending_payment"
+                for provider_id in unique_provider_ids
+            },
+            "fulfillment_status": "pending_payment",
             "items": [item.dict() for item in order.items],
             "status": OrderStatus.PENDING,
             "payment_status": PaymentStatus.PENDING,
@@ -1501,6 +1588,12 @@ async def process_payment(
                 "$set": {
                     "payment_status": "paid",
                     "status": OrderStatus.CONFIRMED,
+                    "fulfillment_status": "sent_to_provider",
+                    "provider_statuses": {
+                        provider_id: "sent_to_provider"
+                        for provider_id in order.get("provider_ids", [order.get("provider_id")])
+                        if provider_id
+                    },
                     "updated_at": datetime.utcnow(),
                     "payment_date": datetime.utcnow(),
                     "card_last_four": payment_info.card_number[-4:]

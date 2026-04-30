@@ -107,6 +107,13 @@
             justify-content: center;
             color: white;
             font-size: 48px;
+            overflow: hidden;
+        }
+
+        .product-image img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
         }
         
         .product-info {
@@ -124,6 +131,13 @@
             font-size: 12px;
             color: #7f8c8d;
             margin-bottom: 8px;
+        }
+
+        .product-provider {
+            font-size: 13px;
+            color: #4f46e5;
+            font-weight: 600;
+            margin-bottom: 10px;
         }
         
         .product-price {
@@ -420,6 +434,10 @@
                 <option value="Apparel" data-category-key="apparel">Apparel</option>
                 <option value="Accessories" data-category-key="accessories">Accessories</option>
             </select>
+            <label id="providerLabel">Store:</label>
+            <select id="providerFilter" onchange="filterProducts()">
+                <option value="">All Stores</option>
+            </select>
             <input type="text" id="searchInput" placeholder="Search products..." 
                    onkeyup="searchProducts()" style="flex: 1; padding: 10px; border: 1px solid #bdc3c7; border-radius: 4px;">
         </div>
@@ -449,8 +467,8 @@
                         <span id="discountPrice">-$0.00</span>
                     </div>
                     <div class="cart-total" style="font-size:14px; font-weight:600; margin-bottom:10px;">
-                        <span id="commissionLabel">Commission:</span>
-                        <span id="commissionPrice">$0.00</span>
+                        <span id="beforeVatLabel">Before VAT:</span>
+                        <span id="beforeVatPrice">$0.00</span>
                     </div>
                     <div class="cart-total" style="font-size:14px; font-weight:600; margin-bottom:0;">
                         <span id="taxLabel">VAT / Tax:</span>
@@ -506,8 +524,8 @@
                         <span id="paymentDiscount">-$0.00</span>
                     </div>
                     <div style="display:flex; justify-content:space-between; margin-bottom:8px;">
-                        <span id="paymentCommissionLabel">Commission</span>
-                        <span id="paymentCommission">$0.00</span>
+                        <span id="paymentBeforeVatLabel">Before VAT</span>
+                        <span id="paymentBeforeVat">$0.00</span>
                     </div>
                     <div style="display:flex; justify-content:space-between; margin-bottom:0;">
                         <span id="paymentTaxLabel">VAT / Tax</span>
@@ -533,6 +551,7 @@
         const API_BASE = `${protocol}//${hostname}${port}`;
         let userToken = localStorage.getItem("auth_token");
         let products = [];
+        let providers = [];
         let cart = [];
         let orderPreview = null;
         const translations = {
@@ -541,7 +560,9 @@
                 pageTitle: "🛍️ Online Store",
                 logoutButton: "🚪 Logout",
                 categoryLabel: "Category:",
+                providerLabel: "Store:",
                 allCategories: "All Categories",
+                allProviders: "All Stores",
                 footwear: "Footwear",
                 apparel: "Apparel",
                 accessories: "Accessories",
@@ -550,7 +571,7 @@
                 discountCodeLabel: "Discount Code",
                 subtotalLabel: "Subtotal:",
                 discountLabel: "Discount:",
-                commissionLabel: "Commission:",
+                beforeVatLabel: "Before VAT:",
                 taxLabel: "VAT / Tax:",
                 totalLabel: "Total:",
                 checkoutButton: "Proceed to Checkout",
@@ -562,7 +583,7 @@
                 invoiceLabel: "Invoice",
                 paymentSubtotalLabel: "Subtotal",
                 paymentDiscountLabel: "Discount",
-                paymentCommissionLabel: "Commission",
+                paymentBeforeVatLabel: "Before VAT",
                 paymentTaxLabel: "VAT / Tax",
                 cancelPaymentButton: "Cancel",
                 payLabel: "Pay",
@@ -572,6 +593,7 @@
                 inStock: "in stock",
                 outOfStock: "Out of stock",
                 addToCart: "Add to Cart",
+                confirmAddToCart: "Add {qty} x {name} from {provider} to cart?",
                 pleaseLogin: "❌ Please login first",
                 notEnoughStock: "❌ Not enough stock",
                 addedToCart: "✅ Added {name} to cart!",
@@ -583,6 +605,7 @@
                 invoiceReady: "Invoice #{invoice} created",
                 noProductsFound: "No products found",
                 loading: "Loading...",
+                store: "Store",
                 errorLoadingProducts: "❌ Error loading products:",
                 errorPrefix: "❌ Error:"
             },
@@ -591,7 +614,9 @@
                 pageTitle: "🛍️ ร้านค้าออนไลน์",
                 logoutButton: "🚪 ออกจากระบบ",
                 categoryLabel: "หมวดหมู่:",
+                providerLabel: "ร้านค้า:",
                 allCategories: "ทุกหมวดหมู่",
+                allProviders: "ทุกร้านค้า",
                 footwear: "รองเท้า",
                 apparel: "เครื่องแต่งกาย",
                 accessories: "อุปกรณ์เสริม",
@@ -600,7 +625,7 @@
                 discountCodeLabel: "โค้ดส่วนลด",
                 subtotalLabel: "ยอดก่อนส่วนลด:",
                 discountLabel: "ส่วนลด:",
-                commissionLabel: "ค่าคอมมิชชั่น:",
+                beforeVatLabel: "ราคาก่อน VAT:",
                 taxLabel: "VAT / ภาษี:",
                 totalLabel: "รวม:",
                 checkoutButton: "ดำเนินการชำระเงิน",
@@ -612,7 +637,7 @@
                 invoiceLabel: "เลขบิล",
                 paymentSubtotalLabel: "ยอดก่อนส่วนลด",
                 paymentDiscountLabel: "ส่วนลด",
-                paymentCommissionLabel: "ค่าคอมมิชชั่น",
+                paymentBeforeVatLabel: "ราคาก่อน VAT",
                 paymentTaxLabel: "VAT / ภาษี",
                 cancelPaymentButton: "ยกเลิก",
                 payLabel: "ชำระ",
@@ -622,6 +647,7 @@
                 inStock: "ชิ้นในสต็อก",
                 outOfStock: "สินค้าหมด",
                 addToCart: "เพิ่มลงรถเข็น",
+                confirmAddToCart: "เพิ่ม {qty} x {name} จากร้าน {provider} ลงรถเข็นใช่หรือไม่?",
                 pleaseLogin: "❌ กรุณาเข้าสู่ระบบก่อน",
                 notEnoughStock: "❌ สินค้าในสต็อกไม่เพียงพอ",
                 addedToCart: "✅ เพิ่ม {name} ลงรถเข็นแล้ว!",
@@ -633,6 +659,7 @@
                 invoiceReady: "สร้างบิลเลขที่ #{invoice} แล้ว",
                 noProductsFound: "ไม่พบสินค้า",
                 loading: "กำลังโหลด...",
+                store: "ร้านค้า",
                 errorLoadingProducts: "❌ โหลดสินค้าไม่สำเร็จ:",
                 errorPrefix: "❌ ข้อผิดพลาด:"
             }
@@ -653,7 +680,7 @@
         
         function applyTranslations() {
             document.title = t("title");
-            ["pageTitle","logoutButton","categoryLabel","cartTitle","discountCodeLabel","subtotalLabel","discountLabel","commissionLabel","taxLabel","totalLabel","checkoutButton","paymentTitle","cardHolderLabel","cardNumberLabel","expiryLabel","cvvLabel","invoiceLabel","paymentSubtotalLabel","paymentDiscountLabel","paymentCommissionLabel","paymentTaxLabel","cancelPaymentButton","payLabel"].forEach((id) => {
+            ["pageTitle","logoutButton","categoryLabel","providerLabel","cartTitle","discountCodeLabel","subtotalLabel","discountLabel","beforeVatLabel","taxLabel","totalLabel","checkoutButton","paymentTitle","cardHolderLabel","cardNumberLabel","expiryLabel","cvvLabel","invoiceLabel","paymentSubtotalLabel","paymentDiscountLabel","paymentBeforeVatLabel","paymentTaxLabel","cancelPaymentButton","payLabel"].forEach((id) => {
                 const element = document.getElementById(id);
                 if (element) {
                     element.textContent = t(id);
@@ -664,6 +691,10 @@
             document.querySelectorAll("[data-category-key]").forEach((option) => {
                 option.textContent = t(option.dataset.categoryKey);
             });
+            const providerFilter = document.getElementById("providerFilter");
+            if (providerFilter && providerFilter.options.length > 0) {
+                providerFilter.options[0].textContent = t("allProviders");
+            }
         }
 
         function formatMoney(amount) {
@@ -686,14 +717,14 @@
         function applyOrderSummary(pricing, billing = {}) {
             document.getElementById("subtotalPrice").textContent = formatMoney(pricing?.subtotal);
             document.getElementById("discountPrice").textContent = "-" + formatMoney(pricing?.discount_amount);
-            document.getElementById("commissionPrice").textContent = formatMoney(pricing?.commission_amount);
+            document.getElementById("beforeVatPrice").textContent = formatMoney(pricing?.taxable_amount);
             document.getElementById("taxPrice").textContent = formatMoney(pricing?.tax_amount);
             document.getElementById("totalPrice").textContent = formatMoney(pricing?.grand_total);
             document.getElementById("payAmount").textContent = formatMoney(pricing?.grand_total);
             document.getElementById("invoiceNumber").textContent = billing?.invoice_number || "Preview";
             document.getElementById("paymentSubtotal").textContent = formatMoney(pricing?.subtotal);
             document.getElementById("paymentDiscount").textContent = "-" + formatMoney(pricing?.discount_amount);
-            document.getElementById("paymentCommission").textContent = formatMoney(pricing?.commission_amount);
+            document.getElementById("paymentBeforeVat").textContent = formatMoney(pricing?.taxable_amount);
             document.getElementById("paymentTax").textContent = formatMoney(pricing?.tax_amount);
         }
 
@@ -703,7 +734,7 @@
                 applyOrderSummary({
                     subtotal: 0,
                     discount_amount: 0,
-                    commission_amount: 0,
+                    taxable_amount: 0,
                     tax_amount: 0,
                     grand_total: 0
                 });
@@ -715,7 +746,7 @@
                 applyOrderSummary({
                     subtotal,
                     discount_amount: 0,
-                    commission_amount: 0,
+                    taxable_amount: subtotal ? subtotal / 1.07 : 0,
                     tax_amount: 0,
                     grand_total: subtotal
                 });
@@ -743,7 +774,7 @@
                 applyOrderSummary({
                     subtotal,
                     discount_amount: 0,
-                    commission_amount: 0,
+                    taxable_amount: subtotal ? subtotal / 1.07 : 0,
                     tax_amount: 0,
                     grand_total: subtotal
                 });
@@ -770,7 +801,7 @@
             
             save() {
                 localStorage.setItem("cart", JSON.stringify(cart));
-                document.getElementById("cartCount").textContent = cart.length;
+                document.getElementById("cartCount").textContent = cart.reduce((sum, item) => sum + item.quantity, 0);
             }
             
             load() {
@@ -795,6 +826,7 @@
                         <div class="cart-item">
                             <div class="cart-item-info">
                                 <strong>${item.name}</strong><br>
+                                <small>${t("store")}: ${item.provider_name || item.provider_id || '-'}</small><br>
                                 ${item.quantity} × $${item.price.toFixed(2)} = $${itemTotal.toFixed(2)}
                             </div>
                             <button class="cart-item-remove" onclick="cartManager.remove('${item._id}')">${t("remove")}</button>
@@ -810,34 +842,18 @@
         }
         
         const cartManager = new Cart();
-        
-        async function loadProducts() {
-            try {
-                const response = await fetch(`${API_BASE}/api/user/products`);
-                if (response.ok) {
-                    const data = await response.json();
-                    products = data.products || [];
-                    renderProducts();
-                }
-            } catch (error) {
-                showMessage(`${t("errorLoadingProducts")} ${error.message}`, "error");
-            }
-        }
-        
-        function renderProducts() {
-            const container = document.getElementById("productsContainer");
-            
-            if (products.length === 0) {
-                container.innerHTML = `<p class="loading">${t("noProductsAvailable")}</p>`;
-                return;
-            }
-            
-            container.innerHTML = products.map(product => `
+
+        function renderProductCard(product) {
+            const imageMarkup = product.image_url
+                ? `<img src="${product.image_url}" alt="${product.name}">`
+                : '👟';
+            return `
                 <div class="product-card">
-                    <div class="product-image">👟</div>
+                    <div class="product-image">${imageMarkup}</div>
                     <div class="product-info">
                         <div class="product-name">${product.name}</div>
                         <div class="product-sku">${product.sku}</div>
+                        <div class="product-provider">${t("store")}: ${product.provider_name || product.provider_id || '-'}</div>
                         <div class="product-price">$${product.price.toFixed(2)}</div>
                         <div class="product-stock">
                             <span class="stock-${product.stock > 0 ? 'in' : 'out'}">
@@ -851,7 +867,76 @@
                         </div>
                     </div>
                 </div>
-            `).join("");
+            `;
+        }
+
+        function getFilteredProducts() {
+            const category = document.getElementById("categoryFilter").value;
+            const providerId = document.getElementById("providerFilter").value;
+            const search = document.getElementById("searchInput").value.toLowerCase().trim();
+            return products.filter((product) => {
+                const matchCategory = !category || product.category === category;
+                const matchProvider = !providerId || product.provider_id === providerId;
+                const matchSearch = !search
+                    || product.name.toLowerCase().includes(search)
+                    || product.sku.toLowerCase().includes(search)
+                    || (product.provider_name || '').toLowerCase().includes(search);
+                return matchCategory && matchProvider && matchSearch;
+            });
+        }
+
+        function populateProviderFilter() {
+            const providerFilter = document.getElementById("providerFilter");
+            providerFilter.innerHTML = `<option value="">${t("allProviders")}</option>`;
+            providers.forEach((provider) => {
+                const option = document.createElement("option");
+                option.value = provider.provider_id;
+                option.textContent = provider.provider_name;
+                providerFilter.appendChild(option);
+            });
+        }
+        
+        async function loadProducts() {
+            try {
+                const response = await fetch(`${API_BASE}/api/user/products`);
+                if (response.ok) {
+                    const data = await response.json();
+                    products = data.products || [];
+                    renderProducts();
+                }
+            } catch (error) {
+                showMessage(`${t("errorLoadingProducts")} ${error.message}`, "error");
+            }
+        }
+
+        async function loadProviders() {
+            try {
+                const response = await fetch(`${API_BASE}/api/user/providers`);
+                if (response.ok) {
+                    const data = await response.json();
+                    providers = data.providers || [];
+                    populateProviderFilter();
+                }
+            } catch (error) {
+                console.error("Error loading providers:", error);
+            }
+        }
+        
+        function renderProducts() {
+            const container = document.getElementById("productsContainer");
+            const visibleProducts = getFilteredProducts();
+            
+            if (products.length === 0) {
+                container.innerHTML = `<p class="loading">${t("noProductsAvailable")}</p>`;
+                return;
+            }
+
+            if (visibleProducts.length === 0) {
+                container.innerHTML = `<p class="loading">${t("noProductsFound")}</p>`;
+                return;
+            }
+
+            container.innerHTML = visibleProducts.map(renderProductCard).join("");
         }
         
         function addToCart(productId) {
@@ -865,6 +950,11 @@
             
             if (quantity > product.stock) {
                 showMessage(t("notEnoughStock"), "error");
+                return;
+            }
+
+            const providerName = product.provider_name || product.provider_id || "-";
+            if (!confirm(template("confirmAddToCart", { qty: quantity, name: product.name, provider: providerName }))) {
                 return;
             }
             
@@ -982,37 +1072,11 @@
         }
         
         function filterProducts() {
-            const category = document.getElementById("categoryFilter").value;
             renderProducts();
         }
         
         function searchProducts() {
-            const search = document.getElementById("searchInput").value.toLowerCase();
-            const filtered = products.filter(p => 
-                p.name.toLowerCase().includes(search) ||
-                p.sku.toLowerCase().includes(search)
-            );
-            
-            const container = document.getElementById("productsContainer");
-            if (filtered.length === 0) {
-                container.innerHTML = `<p class="loading">${t("noProductsFound")}</p>`;
-                return;
-            }
-            
-            container.innerHTML = filtered.map(product => `
-                <div class="product-card">
-                    <div class="product-image">👟</div>
-                    <div class="product-info">
-                        <div class="product-name">${product.name}</div>
-                        <div class="product-sku">${product.sku}</div>
-                        <div class="product-price">$${product.price.toFixed(2)}</div>
-                        <div class="product-actions">
-                            <input type="number" id="qty-${product._id}" value="1" min="1" max="${product.stock}">
-                            <button class="button" onclick="addToCart('${product._id}')">${t("addToCart")}</button>
-                        </div>
-                    </div>
-                </div>
-            `).join("");
+            renderProducts();
         }
         
         function showMessage(msg, type) {
@@ -1032,9 +1096,10 @@
         
         window.EcomI18n.bindSelect(document.getElementById("languageSwitcher"));
         window.EcomI18n.init(applyTranslations);
-        window.addEventListener("load", () => {
+        window.addEventListener("load", async () => {
             applyTranslations();
-            loadProducts();
+            await loadProviders();
+            await loadProducts();
             cartManager.load();
         });
     </script>

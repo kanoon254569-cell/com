@@ -339,14 +339,26 @@ class DashboardDB:
             if product.get("stock", 0) < 5
         ]
         
+        product_lookup = {str(product.get("_id")): product for product in products}
+        product_ids = set(product_lookup.keys())
+
         # Total revenue and orders
         orders = await db.db["orders"].find({
-            "provider_id": {"$in": provider_scopes},
+            "$or": [
+                {"provider_id": {"$in": provider_scopes}},
+                {"provider_ids": {"$in": provider_scopes}},
+            ],
             "status": {"$ne": "cancelled"}
         }).to_list(None)
-        
-        total_revenue = sum(o.get("total_amount", 0) for o in orders)
+
         total_orders = len(orders)
+        total_revenue = 0
+        for order in orders:
+            for item in order.get("items", []):
+                if str(item.get("product_id")) not in product_ids:
+                    continue
+                total_revenue += float(item.get("price_at_purchase", 0) or 0) * int(item.get("quantity", 0) or 0)
+        total_revenue = round(total_revenue, 2)
         
         # Orders today
         today_start = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
@@ -356,7 +368,7 @@ class DashboardDB:
         sales_by_product = []
         for product in products:
             product_sales = sum(
-                sum(item.get("quantity", 0) for item in o.get("items", []) 
+                sum(item.get("quantity", 0) for item in o.get("items", [])
                     if item.get("product_id") == str(product.get("_id")))
                 for o in orders
             )
