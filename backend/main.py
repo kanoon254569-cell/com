@@ -158,6 +158,7 @@ def serialize_product(product: dict) -> dict:
         "stock": int(product.get("stock", 0) or 0),
         "featured": int(product.get("featured", 1) or 0),
         "description": product.get("description", "") or "",
+        "image_url": product.get("image_url", "") or "",
         "provider_id": product.get("provider_id"),
     }
 
@@ -253,6 +254,41 @@ async def ensure_default_users() -> None:
     print("   Admin: admin@ecommerce.local / admin123")
     print("   Provider: provider@ecommerce.local / Provider123")
     print("   User: user@ecommerce.local / User123456")
+
+
+def build_period_range(
+    day: Optional[int] = None,
+    month: Optional[int] = None,
+    year: Optional[int] = None
+) -> Optional[tuple[datetime, datetime]]:
+    if day is not None and month is not None and year is not None:
+        start = datetime(year, month, day)
+        return start, start + timedelta(days=1)
+    if month is not None and year is not None:
+        start = datetime(year, month, 1)
+        if month == 12:
+            end = datetime(year + 1, 1, 1)
+        else:
+            end = datetime(year, month + 1, 1)
+        return start, end
+    if year is not None:
+        start = datetime(year, 1, 1)
+        return start, datetime(year + 1, 1, 1)
+    return None
+
+
+def attach_period_filter(
+    query: dict,
+    field_name: str,
+    day: Optional[int] = None,
+    month: Optional[int] = None,
+    year: Optional[int] = None
+) -> dict:
+    period = build_period_range(day=day, month=month, year=year)
+    if period:
+        start, end = period
+        query[field_name] = {"$gte": start, "$lt": end}
+    return query
 
 # ===================== LIFESPAN =====================
 
@@ -867,10 +903,31 @@ async def provider_create_product(
     }
 
 @app.get("/api/provider/products")
-async def provider_get_products(current_user: str = Depends(get_current_user)):
+async def provider_get_products(
+    category: Optional[str] = None,
+    current_user: str = Depends(get_current_user)
+):
     """Provider: Get own products"""
     products = await ProductDB.get_products_by_provider(current_user)
+    normalized_category = (category or "").strip()
+    if normalized_category:
+        products = [
+            product for product in products
+            if (product.get("category") or "").strip().lower() == normalized_category.lower()
+        ]
     return {"products": products}
+
+
+@app.get("/api/provider/product-categories")
+async def provider_get_product_categories(current_user: str = Depends(get_current_user)):
+    """Provider: Get category list from own products"""
+    products = await ProductDB.get_products_by_provider(current_user)
+    categories = sorted({
+        (product.get("category") or "").strip()
+        for product in products
+        if (product.get("category") or "").strip()
+    })
+    return {"categories": categories}
 
 @app.put("/api/provider/products/{product_id}")
 async def provider_update_product(
@@ -981,6 +1038,109 @@ async def provider_dashboard(current_user: str = Depends(get_current_user)):
     """Provider: Get own dashboard"""
     dashboard = await DashboardDB.get_provider_dashboard(current_user)
     return dashboard
+
+
+@app.get("/api/provider/sales-history")
+async def provider_sales_history(
+    day: Optional[int] = None,
+    month: Optional[int] = None,
+    year: Optional[int] = None,
+    category: Optional[str] = None,
+    current_user: str = Depends(get_current_user)
+):
+    """Provider: Get sales history filtered by day/month/year/category."""
+    provider_scopes = await get_provider_scopes(current_user)
+    products = await db.db["products"].find(
+        {"provider_id": {"$in": provider_scopes}}
+    ).to_list(None)
+    product_lookup = {str(product["_id"]): product for product in products}
+    product_ids = set(product_lookup.keys())
+
+    query = {"provider_id": {"$in": provider_scopes}}
+    attach_period_filter(query, "created_at", day=day, month=month, year=year)
+    orders = await db.db["orders"].find(query).sort("created_at", -1).to_list(None)
+
+    normalized_category = (category or "").strip().lower()
+    history = []
+    for order in orders:
+        for item in order.get("items", []):
+            product_id = str(item.get("product_id", ""))
+            if product_id not in product_ids:
+                continue
+            product = product_lookup.get(product_id, {})
+            product_category = (product.get("category") or "").strip()
+            if normalized_category and product_category.lower() != normalized_category:
+                continue
+
+            quantity = int(item.get("quantity", 0) or 0)
+            unit_price = float(item.get("price_at_purchase", 0) or 0)
+            history.append({
+                "order_id": str(order["_id"]),
+                "product_id": product_id,
+                "product_name": product.get("name") or item.get("name") or "",
+                "image_url": product.get("image_url", "") or "",
+                "category": product_category,
+                "quantity": quantity,
+                "unit_price": unit_price,
+                "total_amount": round(quantity * unit_price, 2),
+                "status": normalize_order_status(order.get("status")).title(),
+                "payment_status": str(order.get("payment_status", "")).title(),
+                "customer_name": order.get("user_name", "") or "Unknown user",
+                "created_at": order.get("created_at").isoformat() if order.get("created_at") else None,
+            })
+
+    return {"history": history}
+
+
+@app.get("/api/provider/restock-history")
+async def provider_restock_history(
+    day: Optional[int] = None,
+    month: Optional[int] = None,
+    year: Optional[int] = None,
+    category: Optional[str] = None,
+    current_user: str = Depends(get_current_user)
+):
+    """Provider: Get restock history filtered by day/month/year/category."""
+    provider_scopes = await get_provider_scopes(current_user)
+    products = await db.db["products"].find(
+        {"provider_id": {"$in": provider_scopes}}
+    ).to_list(None)
+    product_lookup = {str(product["_id"]): product for product in products}
+    product_ids = set(product_lookup.keys())
+
+    query = {
+        "provider_id": {"$in": provider_scopes},
+        "action": "add",
+        "quantity_changed": {"$gt": 0},
+    }
+    attach_period_filter(query, "timestamp", day=day, month=month, year=year)
+    logs = await db.db["inventory_logs"].find(query).sort("timestamp", -1).to_list(None)
+
+    normalized_category = (category or "").strip().lower()
+    history = []
+    for log in logs:
+        product_id = str(log.get("product_id", ""))
+        if product_id not in product_ids:
+            continue
+        product = product_lookup.get(product_id, {})
+        product_category = (product.get("category") or "").strip()
+        if normalized_category and product_category.lower() != normalized_category:
+            continue
+
+        history.append({
+            "product_id": product_id,
+            "product_name": product.get("name", ""),
+            "image_url": product.get("image_url", "") or "",
+            "sku": product.get("sku", ""),
+            "category": product_category,
+            "quantity_changed": int(log.get("quantity_changed", 0) or 0),
+            "old_stock": int(log.get("old_stock", 0) or 0),
+            "new_stock": int(log.get("new_stock", 0) or 0),
+            "reason": log.get("reason", "") or "",
+            "timestamp": log.get("timestamp").isoformat() if log.get("timestamp") else None,
+        })
+
+    return {"history": history}
 
 # ===================== USER SHOPPING ROUTES =====================
 

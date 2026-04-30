@@ -30,6 +30,7 @@ class ProductBase(BaseModel):
     stock: int = 0
     sku: str
     category: str
+    image_url: Optional[str] = None
 
 class ProductCreate(ProductBase):
     provider_id: Optional[str] = None
@@ -41,6 +42,7 @@ class ProductUpdate(BaseModel): # เพิ่มสำหรับการ Edi
     price: Optional[float] = None
     stock: Optional[int] = None
     category: Optional[str] = None
+    image_url: Optional[str] = None
 
 class RestockRequest(BaseModel):
     quantity: int = Field(gt=0)
