@@ -885,11 +885,25 @@
             const raw = String(value || '').trim();
             if (!raw) return '';
             if (raw.startsWith('data:image/')) return raw;
-            try {
-                return new URL(raw, window.location.origin).toString();
-            } catch (error) {
-                return '';
+            if (raw.startsWith('http://') || raw.startsWith('https://') || raw.startsWith('blob:') || raw.startsWith('/')) {
+                return raw;
             }
+            return '';
+        }
+
+        function safeSetSelectValue(select, value, fallback = '') {
+            if (!select) return;
+            const normalized = value == null ? '' : String(value);
+            const values = Array.from(select.options).map((option) => String(option.value));
+            if (normalized && values.includes(normalized)) {
+                select.value = normalized;
+                return;
+            }
+            if (fallback && values.includes(String(fallback))) {
+                select.value = String(fallback);
+                return;
+            }
+            select.value = values.includes('') ? '' : (values[0] || '');
         }
 
         function renderProductImageCell(imageUrl, name) {
@@ -956,7 +970,7 @@
                 option.textContent = monthNames[month];
                 select.appendChild(option);
             }
-            select.value = currentValue;
+            safeSetSelectValue(select, currentValue);
         }
 
         function populateYearOptions(selectId) {
@@ -971,7 +985,7 @@
                 option.textContent = String(year);
                 select.appendChild(option);
             }
-            select.value = currentValue;
+            safeSetSelectValue(select, currentValue);
         }
 
         function populateCategoryFilters() {
@@ -987,7 +1001,7 @@
                     option.textContent = category;
                     select.appendChild(option);
                 });
-                select.value = currentValue;
+                safeSetSelectValue(select, currentValue);
             });
         }
 
@@ -1006,21 +1020,13 @@
                 shopSelect.innerHTML = providerShops.length
                     ? providerShops.map((shop) => `<option value="${shop.provider_id}">${shop.provider_name}${shop.is_primary ? ' • Main' : ''}</option>`).join('')
                     : `<option value="">${t('noShopsYet')}</option>`;
-                if (currentValue && providerShops.some((shop) => shop.provider_id === currentValue)) {
-                    shopSelect.value = currentValue;
-                } else if (providerShops.length) {
-                    shopSelect.value = providerShops[0].provider_id;
-                }
+                safeSetSelectValue(shopSelect, currentValue, providerShops[0]?.provider_id || '');
             }
 
             if (shopFilter) {
                 const currentValue = shopFilter.value;
                 shopFilter.innerHTML = `<option value="">${window.EcomI18n.getLanguage() === 'th' ? 'ทุกร้านค้า' : 'All Shops'}</option>${providerShops.map((shop) => `<option value="${shop.provider_id}">${shop.provider_name}</option>`).join('')}`;
-                if (currentValue && providerShops.some((shop) => shop.provider_id === currentValue)) {
-                    shopFilter.value = currentValue;
-                } else {
-                    shopFilter.value = '';
-                }
+                safeSetSelectValue(shopFilter, currentValue, '');
             }
 
             if (chipList) {
@@ -1678,8 +1684,9 @@
                 }
 
                 const renderedOrders = orders.map((order) => {
-                    const slipUrl = normalizeAssetUrl(order.slip_image);
-                    return `
+                    try {
+                        const slipUrl = normalizeAssetUrl(order.slip_image);
+                        return `
                         <article class="rounded-[28px] border border-black/10 bg-white p-6 shadow-sm">
                             <div class="flex flex-col gap-4 border-b border-black/10 pb-5 lg:flex-row lg:items-start lg:justify-between">
                                 <div>
@@ -1722,7 +1729,20 @@
                             </div>
                         </article>
                     `;
-                }).join('');
+                    } catch (error) {
+                        console.error('Failed to render provider order', order, error);
+                        return '';
+                    }
+                }).filter(Boolean).join('');
+
+                if (!renderedOrders) {
+                    document.getElementById('allOrdersTable').innerHTML = `
+                        <div class="rounded-3xl border border-dashed border-black/15 bg-neutral-50 px-6 py-12 text-center">
+                            <p class="text-lg font-medium text-black">${t('noProviderOrders')}</p>
+                        </div>
+                    `;
+                    return;
+                }
 
                 document.getElementById('allOrdersTable').innerHTML = `
                     <div class="grid gap-5">
