@@ -143,6 +143,9 @@ class SlipUploadRequest(BaseModel):
     slip_image: str
     note: Optional[str] = None
 
+class SlipDecisionRequest(BaseModel):
+    note: Optional[str] = None
+
 # ===================== TRANSACTION LOG (Duplicate Purchase Prevention) =====================
 class TransactionLog(BaseModel):
     id: str = Field(alias="_id")

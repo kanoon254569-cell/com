@@ -216,6 +216,9 @@
             <button class="tab-button rounded-2xl border border-black/10 bg-white px-5 py-3 text-sm font-semibold text-neutral-600 hover:border-black hover:text-black" onclick="switchTab('restock-history', event)" id="tabRestockHistory">
                 📥 Restock History
             </button>
+            <button class="tab-button rounded-2xl border border-black/10 bg-white px-5 py-3 text-sm font-semibold text-neutral-600 hover:border-black hover:text-black" onclick="switchTab('slip-review', event)" id="tabSlipReview">
+                🧾 Slip Review
+            </button>
         </div>
 
         <div id="add-product" class="tab-content active">
@@ -425,6 +428,21 @@
                 </div>
             </div>
         </div>
+
+        <div id="slip-review" class="tab-content">
+            <div class="rounded-[32px] border border-black/10 bg-white/88 p-6 shadow-panel backdrop-blur sm:p-8">
+                <div class="mb-8 flex flex-col gap-3 border-b border-black/10 pb-6 sm:flex-row sm:items-end sm:justify-between">
+                    <div>
+                        <p class="text-xs font-semibold uppercase tracking-[0.24em] text-neutral-500">Payment Control</p>
+                        <h2 id="slipReviewTitle" class="mt-2 text-2xl font-semibold tracking-tight text-black">🧾 Slip Review</h2>
+                    </div>
+                    <p class="max-w-md text-sm text-neutral-500">Review transfer slips from customers and decide whether to approve or reject them.</p>
+                </div>
+                <div id="slipReviewTable">
+                    <p class="rounded-3xl border border-dashed border-black/15 bg-neutral-50 px-6 py-10 text-center text-neutral-500">No slips loaded yet.</p>
+                </div>
+            </div>
+        </div>
     </div>
 
     <div id="editModal" class="modal" onclick="handleModalBackdrop(event)">
@@ -532,6 +550,7 @@
                 tabMyProducts: "📋 My Products",
                 tabSalesHistory: "🧾 Sales History",
                 tabRestockHistory: "📥 Restock History",
+                tabSlipReview: "🧾 Slip Review",
                 addProductTitle: "➕ Add New Product",
                 addNameLabel: "Product Name *",
                 addSkuLabel: "SKU (Stock Keeping Unit) *",
@@ -567,6 +586,7 @@
                 restockMonthLabel: "Month",
                 restockYearLabel: "Year",
                 restockCategoryLabel: "Category",
+                slipReviewTitle: "🧾 Slip Review",
                 deleteButton: "Delete",
                 cancelButton: "Cancel",
                 saveButton: "Save Changes",
@@ -607,6 +627,12 @@
                 date: "Date",
                 reason: "Reason",
                 stockChange: "Stock Change",
+                customer: "Customer",
+                total: "Total",
+                invoice: "Invoice",
+                approve: "Approve",
+                reject: "Reject",
+                noSlipReviews: "No slips waiting for review.",
                 currentLabel: "Current",
                 addedUnits: "Added {qty} units",
                 manualRestock: "Manual restock",
@@ -628,6 +654,7 @@
                 tabMyProducts: "📋 สินค้าของฉัน",
                 tabSalesHistory: "🧾 ประวัติการขาย",
                 tabRestockHistory: "📥 ประวัติเติมสินค้า",
+                tabSlipReview: "🧾 ตรวจสลิป",
                 addProductTitle: "➕ เพิ่มสินค้าใหม่",
                 addNameLabel: "ชื่อสินค้า *",
                 addSkuLabel: "SKU (รหัสสินค้า) *",
@@ -663,6 +690,7 @@
                 restockMonthLabel: "เดือน",
                 restockYearLabel: "ปี",
                 restockCategoryLabel: "หมวดหมู่",
+                slipReviewTitle: "🧾 ตรวจสลิป",
                 deleteButton: "ลบ",
                 cancelButton: "ยกเลิก",
                 saveButton: "บันทึกการเปลี่ยนแปลง",
@@ -703,6 +731,12 @@
                 date: "วันที่",
                 reason: "เหตุผล",
                 stockChange: "การเปลี่ยนสต็อก",
+                customer: "ลูกค้า",
+                total: "รวม",
+                invoice: "เลขบิล",
+                approve: "อนุมัติ",
+                reject: "ไม่อนุมัติ",
+                noSlipReviews: "ไม่มีสลิปรอตรวจ",
                 currentLabel: "ปัจจุบัน",
                 addedUnits: "เพิ่ม {qty} หน่วยแล้ว",
                 manualRestock: "เติมสต็อกด้วยตนเอง",
@@ -730,13 +764,13 @@
             [
                 "pageTitle","pageSubtitle","logoutButton","statProductsLabel","statStockLabel",
                 "statRevenueLabel","statOrdersLabel","tabAddProduct","tabManageStock","tabMyProducts",
-                "tabSalesHistory","tabRestockHistory",
+                "tabSalesHistory","tabRestockHistory","tabSlipReview",
                 "addProductTitle","addNameLabel","addSkuLabel","addCategoryLabel","addPriceLabel",
                 "addStockLabel","addImageLabel","addDescriptionLabel","addProductButton","manageStockTitle",
                 "selectProductLabel","quantityLabel","reasonLabel","addStockButton","myProductsTitle",
                 "filterCategoryLabel","salesHistoryTitle","salesDateLabel","salesMonthLabel","salesYearLabel",
                 "salesCategoryLabel","restockHistoryTitle","restockDateLabel","restockMonthLabel",
-                "restockYearLabel","restockCategoryLabel",
+                "restockYearLabel","restockCategoryLabel","slipReviewTitle",
                 "editModalTitle","editNameLabel","editSkuLabel","editCategoryLabel","editPriceLabel",
                 "editStockLabel","editImageLabel","editDescriptionLabel","deleteButton","cancelButton","saveButton"
             ].forEach((id) => {
@@ -930,6 +964,8 @@
                 loadSalesHistory();
             } else if (tabName === 'restock-history') {
                 loadRestockHistory();
+            } else if (tabName === 'slip-review') {
+                loadSlipReviews();
             }
         }
         
@@ -1304,6 +1340,92 @@
                                             <td class="px-6 py-5 text-neutral-600">${entry.old_stock} → ${entry.new_stock}</td>
                                             <td class="px-6 py-5 text-neutral-600">${entry.reason || '-'}</td>
                                             <td class="px-6 py-5 text-neutral-600">${formatDate(entry.timestamp)}</td>
+                                        </tr>
+                                    `).join('')}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                `;
+            } catch (error) {
+                showMessage(`${t('errorPrefix')} ${error.message}`, 'error');
+            }
+        }
+
+        async function reviewSlip(orderId, action) {
+            const note = prompt(action === 'approve' ? 'Review note (optional)' : 'Reason for rejection (optional)') || '';
+            try {
+                const response = await fetch(`${API_BASE}/api/provider/slip-reviews/${orderId}/${action}`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${token}`
+                    },
+                    body: JSON.stringify({ note })
+                });
+                if (!response.ok) {
+                    const error = await response.json();
+                    throw new Error(error.detail || `Failed to ${action} slip`);
+                }
+                showMessage(action === 'approve' ? '✅ Slip approved' : '✅ Slip rejected', 'success');
+                await loadSlipReviews();
+                await loadDashboard();
+            } catch (error) {
+                showMessage(`${t('errorPrefix')} ${error.message}`, 'error');
+            }
+        }
+
+        async function loadSlipReviews() {
+            try {
+                const response = await fetch(`${API_BASE}/api/provider/slip-reviews`, {
+                    headers: {
+                        'Authorization': `Bearer ${token}`
+                    }
+                });
+                if (!response.ok) {
+                    const error = await response.json();
+                    throw new Error(error.detail || 'Failed to load slip reviews');
+                }
+                const data = await response.json();
+                const orders = data.orders || [];
+                if (!orders.length) {
+                    document.getElementById('slipReviewTable').innerHTML = `
+                        <div class="rounded-3xl border border-dashed border-black/15 bg-neutral-50 px-6 py-12 text-center">
+                            <p class="text-lg font-medium text-black">${t('noSlipReviews')}</p>
+                        </div>
+                    `;
+                    return;
+                }
+
+                document.getElementById('slipReviewTable').innerHTML = `
+                    <div class="overflow-hidden rounded-[28px] border border-black/10 bg-white">
+                        <div class="overflow-x-auto">
+                            <table class="min-w-full divide-y divide-black/10 text-sm">
+                                <thead class="bg-neutral-100 text-left text-xs font-semibold uppercase tracking-[0.2em] text-neutral-500">
+                                    <tr>
+                                        <th class="px-6 py-4">${t('invoice')}</th>
+                                        <th class="px-6 py-4">${t('customer')}</th>
+                                        <th class="px-6 py-4">${t('total')}</th>
+                                        <th class="px-6 py-4">Slip</th>
+                                        <th class="px-6 py-4">${t('action')}</th>
+                                    </tr>
+                                </thead>
+                                <tbody class="divide-y divide-black/5 bg-white">
+                                    ${orders.map((order) => `
+                                        <tr class="transition hover:bg-neutral-50">
+                                            <td class="px-6 py-5">${order.invoice_number || '-'}</td>
+                                            <td class="px-6 py-5">
+                                                <div class="font-medium text-black">${order.customer_name || '-'}</div>
+                                                <div class="text-xs text-neutral-500">${order.customer_email || ''}</div>
+                                            </td>
+                                            <td class="px-6 py-5 font-medium text-black">${formatCurrency(order.total_amount)}</td>
+                                            <td class="px-6 py-5">${order.slip_image ? `<a class="text-sm font-semibold text-blue-600 underline" href="${order.slip_image}" target="_blank">View Slip</a>` : '-'}</td>
+                                            <td class="px-6 py-5">
+                                                <div class="flex flex-wrap gap-2">
+                                                    <button class="rounded-full bg-black px-4 py-2 text-xs font-semibold uppercase tracking-[0.18em] text-white transition hover:bg-neutral-800" onclick="reviewSlip('${order.order_id}', 'approve')">${t('approve')}</button>
+                                                    <button class="rounded-full border border-red-200 bg-red-50 px-4 py-2 text-xs font-semibold uppercase tracking-[0.18em] text-red-700 transition hover:border-red-300 hover:bg-red-100" onclick="reviewSlip('${order.order_id}', 'reject')">${t('reject')}</button>
+                                                </div>
+                                            </td>
                                         </tr>
                                     `).join('')}
                                 </tbody>

@@ -21,7 +21,7 @@ from .security import (
 )
 from .models import (
     UserCreate, User, ProductCreate, Product, ProductUpdate, OrderCreate, Order, LoginRequest,
-    UserRole, OrderStatus, PaymentStatus, RestockRequest, PaymentRequest, SlipUploadRequest
+    UserRole, OrderStatus, PaymentStatus, RestockRequest, PaymentRequest, SlipUploadRequest, SlipDecisionRequest
 )
 from .data_loader import load_excel_data, seed_database
 from typing import Optional, List
@@ -218,6 +218,99 @@ def serialize_order(order: dict, user_lookup: dict, product_lookup: dict) -> dic
         "total": float(order.get("total_amount", 0) or 0),
         "items": items,
         "notes": order.get("notes", "") or "",
+    }
+
+
+def derive_user_order_status(order: dict) -> str:
+    payment_status = str(order.get("payment_status", "") or "").lower()
+    status = str(order.get("status", "") or "").lower()
+    fulfillment_status = str(order.get("fulfillment_status", "") or "").lower()
+
+    if payment_status == PaymentStatus.PENDING_SLIP_VERIFICATION.value:
+        return "awaiting_slip_verification"
+    if fulfillment_status == "slip_rejected" or payment_status == PaymentStatus.FAILED.value:
+        return "slip_rejected"
+    if status == OrderStatus.SHIPPED.value:
+        return "shipping"
+    if status == OrderStatus.COMPLETED.value:
+        return "completed"
+    if payment_status == PaymentStatus.PAID.value:
+        return "paid"
+    return "pending_payment"
+
+
+async def serialize_user_order(order: dict) -> dict:
+    product_lookup = {}
+    for item in order.get("items", []):
+        product_id = str(item.get("product_id", ""))
+        if not product_id:
+            continue
+        product = await ProductDB.get_product_by_id(product_id)
+        if product:
+            product_lookup[product_id] = product
+
+    items = []
+    for item in order.get("items", []):
+        product_id = str(item.get("product_id", ""))
+        product = product_lookup.get(product_id, {})
+        items.append({
+            "product_id": product_id,
+            "name": product.get("name") or item.get("name") or "Unknown product",
+            "image_url": product.get("image_url", "") or "",
+            "provider_id": product.get("provider_id"),
+            "quantity": int(item.get("quantity", 0) or 0),
+            "price_at_purchase": float(item.get("price_at_purchase", 0) or 0),
+        })
+
+    return {
+        "order_id": str(order.get("_id")),
+        "status": str(order.get("status", "")).lower(),
+        "payment_status": str(order.get("payment_status", "")).lower(),
+        "status_label": derive_user_order_status(order),
+        "total_amount": float(order.get("total_amount", 0) or 0),
+        "created_at": order.get("created_at").isoformat() if order.get("created_at") else None,
+        "billing": order.get("billing") or {},
+        "pricing": order.get("pricing") or {},
+        "items": items,
+    }
+
+
+async def serialize_slip_review_order(order: dict) -> dict:
+    product_lookup = {}
+    for item in order.get("items", []):
+        product_id = str(item.get("product_id", ""))
+        if not product_id:
+            continue
+        product = await ProductDB.get_product_by_id(product_id)
+        if product:
+            product_lookup[product_id] = product
+
+    items = []
+    for item in order.get("items", []):
+        product_id = str(item.get("product_id", ""))
+        product = product_lookup.get(product_id, {})
+        items.append({
+            "product_id": product_id,
+            "name": product.get("name") or item.get("name") or "Unknown product",
+            "image_url": product.get("image_url", "") or "",
+            "provider_id": product.get("provider_id"),
+            "quantity": int(item.get("quantity", 0) or 0),
+            "price_at_purchase": float(item.get("price_at_purchase", 0) or 0),
+        })
+
+    return {
+        "order_id": str(order.get("_id")),
+        "customer_name": order.get("customer_name") or order.get("user_name") or "",
+        "customer_email": order.get("customer_email", "") or "",
+        "payment_status": str(order.get("payment_status", "")).lower(),
+        "status": str(order.get("status", "")).lower(),
+        "fulfillment_status": str(order.get("fulfillment_status", "")).lower(),
+        "slip_image": order.get("slip_image", "") or "",
+        "slip_note": order.get("slip_note", "") or "",
+        "slip_submitted_at": order.get("slip_submitted_at").isoformat() if order.get("slip_submitted_at") else None,
+        "invoice_number": (order.get("billing") or {}).get("invoice_number"),
+        "total_amount": float(order.get("total_amount", 0) or 0),
+        "items": items,
     }
 
 async def require_admin_user(current_user: str) -> dict:
@@ -523,6 +616,75 @@ async def admin_dashboard(current_user: str = Depends(get_current_user)):
         "total_orders": total_orders,
         "sku_summary": sku_summary
     }
+
+
+@app.get("/api/admin/slip-reviews")
+async def admin_slip_reviews(current_user: str = Depends(get_current_user)):
+    """Admin: list all pending slip reviews."""
+    await enforce_admin_access(current_user)
+    orders = await db.db["orders"].find({
+        "payment_status": PaymentStatus.PENDING_SLIP_VERIFICATION
+    }).sort("slip_submitted_at", -1).to_list(None)
+    reviews = []
+    for order in orders:
+        reviews.append(await serialize_slip_review_order(order))
+    return {"orders": reviews}
+
+
+@app.post("/api/admin/slip-reviews/{order_id}/approve")
+async def admin_approve_slip(
+    order_id: str,
+    payload: SlipDecisionRequest,
+    current_user: str = Depends(get_current_user)
+):
+    await enforce_admin_access(current_user)
+    order = await OrderDB.get_order_by_id(order_id)
+    if not order:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Order not found")
+
+    provider_ids = order.get("provider_ids") or [order.get("provider_id")]
+    await db.db["orders"].update_one(
+        {"_id": parse_object_id(order_id, "order_id")},
+        {"$set": {
+            "payment_status": PaymentStatus.PAID,
+            "status": OrderStatus.CONFIRMED,
+            "fulfillment_status": "sent_to_provider",
+            "provider_statuses": {
+                provider_id: "sent_to_provider"
+                for provider_id in provider_ids
+                if provider_id
+            },
+            "slip_review_note": (payload.note or "").strip(),
+            "slip_reviewed_at": datetime.utcnow(),
+            "updated_at": datetime.utcnow(),
+        }}
+    )
+    return {"status": "approved", "order_id": order_id}
+
+
+@app.post("/api/admin/slip-reviews/{order_id}/reject")
+async def admin_reject_slip(
+    order_id: str,
+    payload: SlipDecisionRequest,
+    current_user: str = Depends(get_current_user)
+):
+    await enforce_admin_access(current_user)
+    order = await OrderDB.get_order_by_id(order_id)
+    if not order:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Order not found")
+
+    await db.db["orders"].update_one(
+        {"_id": parse_object_id(order_id, "order_id")},
+        {"$set": {
+            "payment_status": PaymentStatus.FAILED,
+            "status": OrderStatus.PENDING,
+            "fulfillment_status": "slip_rejected",
+            "slip_review_note": (payload.note or "").strip(),
+            "slip_reviewed_at": datetime.utcnow(),
+            "updated_at": datetime.utcnow(),
+        }}
+    )
+    return {"status": "rejected", "order_id": order_id}
 
 @app.get("/api/admin/inventory-status")
 async def admin_inventory_status(current_user: str = Depends(get_current_user)):
@@ -1180,6 +1342,87 @@ async def provider_restock_history(
 
     return {"history": history}
 
+
+@app.get("/api/provider/slip-reviews")
+async def provider_slip_reviews(current_user: str = Depends(get_current_user)):
+    """Provider: Review pending payment slips for assigned orders."""
+    provider_scopes = await get_provider_scopes(current_user)
+    orders = await db.db["orders"].find({
+        "$or": [
+            {"provider_id": {"$in": provider_scopes}},
+            {"provider_ids": {"$in": provider_scopes}},
+        ],
+        "payment_status": PaymentStatus.PENDING_SLIP_VERIFICATION,
+    }).sort("slip_submitted_at", -1).to_list(None)
+
+    reviews = []
+    for order in orders:
+        reviews.append(await serialize_slip_review_order(order))
+    return {"orders": reviews}
+
+
+@app.post("/api/provider/slip-reviews/{order_id}/approve")
+async def provider_approve_slip(
+    order_id: str,
+    payload: SlipDecisionRequest,
+    current_user: str = Depends(get_current_user)
+):
+    provider_scopes = await get_provider_scopes(current_user)
+    order = await OrderDB.get_order_by_id(order_id)
+    if not order:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Order not found")
+
+    provider_ids = order.get("provider_ids") or [order.get("provider_id")]
+    if not any(provider_id in provider_scopes for provider_id in provider_ids if provider_id):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Order not assigned to this provider")
+
+    await db.db["orders"].update_one(
+        {"_id": parse_object_id(order_id, "order_id")},
+        {"$set": {
+            "payment_status": PaymentStatus.PAID,
+            "status": OrderStatus.CONFIRMED,
+            "fulfillment_status": "sent_to_provider",
+            "provider_statuses": {
+                provider_id: "sent_to_provider"
+                for provider_id in provider_ids
+                if provider_id
+            },
+            "slip_review_note": (payload.note or "").strip(),
+            "slip_reviewed_at": datetime.utcnow(),
+            "updated_at": datetime.utcnow(),
+        }}
+    )
+    return {"status": "approved", "order_id": order_id}
+
+
+@app.post("/api/provider/slip-reviews/{order_id}/reject")
+async def provider_reject_slip(
+    order_id: str,
+    payload: SlipDecisionRequest,
+    current_user: str = Depends(get_current_user)
+):
+    provider_scopes = await get_provider_scopes(current_user)
+    order = await OrderDB.get_order_by_id(order_id)
+    if not order:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Order not found")
+
+    provider_ids = order.get("provider_ids") or [order.get("provider_id")]
+    if not any(provider_id in provider_scopes for provider_id in provider_ids if provider_id):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Order not assigned to this provider")
+
+    await db.db["orders"].update_one(
+        {"_id": parse_object_id(order_id, "order_id")},
+        {"$set": {
+            "payment_status": PaymentStatus.FAILED,
+            "status": OrderStatus.PENDING,
+            "fulfillment_status": "slip_rejected",
+            "slip_review_note": (payload.note or "").strip(),
+            "slip_reviewed_at": datetime.utcnow(),
+            "updated_at": datetime.utcnow(),
+        }}
+    )
+    return {"status": "rejected", "order_id": order_id}
+
 # ===================== USER SHOPPING ROUTES =====================
 
 @app.get("/api/user/products")
@@ -1470,7 +1713,10 @@ async def user_create_order(
 async def user_get_orders(current_user: str = Depends(get_current_user)):
     """User: Get own orders"""
     orders = await OrderDB.get_orders_by_user(current_user)
-    return {"orders": orders}
+    serialized_orders = []
+    for order in orders:
+        serialized_orders.append(await serialize_user_order(order))
+    return {"orders": serialized_orders}
 
 @app.get("/api/user/orders/{order_id}")
 async def user_get_order_detail(
@@ -1486,7 +1732,7 @@ async def user_get_order_detail(
             detail="Order not found"
         )
     
-    return order
+    return await serialize_user_order(order)
 
 @app.get("/api/user/orders/{order_id}/invoice")
 async def get_order_invoice(
@@ -1506,6 +1752,7 @@ async def get_order_invoice(
         "order_id": order_id,
         "status": order.get("status"),
         "payment_status": order.get("payment_status"),
+        "status_label": derive_user_order_status(order),
         "billing": order.get("billing") or {},
         "pricing": order.get("pricing") or {
             "currency": "USD",

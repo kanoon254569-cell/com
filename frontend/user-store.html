@@ -407,6 +407,38 @@
             color: #721c24;
             border: 1px solid #f5c6cb;
         }
+
+        .orders-section {
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            padding: 20px;
+            margin-bottom: 30px;
+        }
+
+        .order-card {
+            border: 1px solid #ecf0f1;
+            border-radius: 8px;
+            padding: 16px;
+            margin-bottom: 14px;
+        }
+
+        .order-status {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 6px 12px;
+            border-radius: 999px;
+            font-size: 12px;
+            font-weight: 700;
+        }
+
+        .order-status.awaiting_slip_verification { background: #fef3c7; color: #92400e; }
+        .order-status.paid { background: #d1fae5; color: #065f46; }
+        .order-status.shipping { background: #dbeafe; color: #1d4ed8; }
+        .order-status.completed { background: #dcfce7; color: #166534; }
+        .order-status.slip_rejected { background: #fee2e2; color: #b91c1c; }
+        .order-status.pending_payment { background: #e5e7eb; color: #374151; }
         
         @keyframes slideIn {
             from {
@@ -468,6 +500,11 @@
         </div>
         
         <div id="productsContainer" class="products-grid"></div>
+
+        <div class="orders-section">
+            <h2 id="orderHistoryTitle" style="margin-bottom: 16px;">📦 Order Status</h2>
+            <div id="orderHistoryContainer" class="loading">Loading...</div>
+        </div>
     </div>
     
     <!-- Shopping Cart Sidebar -->
@@ -657,6 +694,7 @@
                 taxLabel: "VAT / Tax:",
                 totalLabel: "Total:",
                 netTotalLabel: "Net Total:",
+                orderHistoryTitle: "📦 Order Status",
                 checkoutButton: "Proceed to Checkout",
                 paymentTitle: "💳 Payment Details",
                 qrSectionTitle: "Scan QR to Pay",
@@ -682,6 +720,12 @@
                 cancelSlipButton: "Cancel",
                 submitSlipButton: "Submit Slip",
                 awaitingSlipVerification: "⏳ Waiting for slip verification",
+                paidStatus: "✅ Paid",
+                shippingStatus: "🚚 Shipping",
+                completedStatus: "📦 Completed",
+                slipRejectedStatus: "❌ Slip rejected",
+                pendingPaymentStatus: "💬 Waiting for payment",
+                noOrdersYet: "No orders yet",
                 cancelPaymentButton: "Cancel",
                 payLabel: "Pay",
                 yourCartEmpty: "Your cart is empty",
@@ -726,6 +770,7 @@
                 taxLabel: "VAT / ภาษี:",
                 totalLabel: "รวม:",
                 netTotalLabel: "รวมสุทธิ:",
+                orderHistoryTitle: "📦 สถานะคำสั่งซื้อ",
                 checkoutButton: "ดำเนินการชำระเงิน",
                 paymentTitle: "💳 รายละเอียดการชำระเงิน",
                 qrSectionTitle: "สแกน QR เพื่อชำระเงิน",
@@ -751,6 +796,12 @@
                 cancelSlipButton: "ยกเลิก",
                 submitSlipButton: "ส่งสลิป",
                 awaitingSlipVerification: "⏳ รอยืนยันสลิป",
+                paidStatus: "✅ ชำระแล้ว",
+                shippingStatus: "🚚 กำลังจัดส่ง",
+                completedStatus: "📦 เสร็จสิ้น",
+                slipRejectedStatus: "❌ สลิปไม่ผ่าน",
+                pendingPaymentStatus: "💬 รอชำระเงิน",
+                noOrdersYet: "ยังไม่มีคำสั่งซื้อ",
                 cancelPaymentButton: "ยกเลิก",
                 payLabel: "ชำระ",
                 yourCartEmpty: "รถเข็นของคุณว่างอยู่",
@@ -792,7 +843,7 @@
         
         function applyTranslations() {
             document.title = t("title");
-            ["pageTitle","logoutButton","categoryLabel","providerLabel","cartTitle","discountCodeLabel","subtotalLabel","discountLabel","beforeVatLabel","taxLabel","totalLabel","netTotalLabel","checkoutButton","paymentTitle","qrSectionTitle","bankNameLabel","accountNameLabel","customerNameLabel","emailLabel","invoiceLabel","paymentSubtotalLabel","paymentDiscountLabel","paymentBeforeVatLabel","paymentTaxLabel","paymentNetTotalLabel","cancelPaymentButton","payLabel","slipUploadTitle","slipOrderLabel","slipInvoiceLabel","slipCustomerNameLabel","slipEmailLabel","slipFileLabel","slipPreviewLabel","slipNoteLabel","cancelSlipButton","submitSlipButton"].forEach((id) => {
+            ["pageTitle","logoutButton","categoryLabel","providerLabel","cartTitle","discountCodeLabel","subtotalLabel","discountLabel","beforeVatLabel","taxLabel","totalLabel","netTotalLabel","orderHistoryTitle","checkoutButton","paymentTitle","qrSectionTitle","bankNameLabel","accountNameLabel","customerNameLabel","emailLabel","invoiceLabel","paymentSubtotalLabel","paymentDiscountLabel","paymentBeforeVatLabel","paymentTaxLabel","paymentNetTotalLabel","cancelPaymentButton","payLabel","slipUploadTitle","slipOrderLabel","slipInvoiceLabel","slipCustomerNameLabel","slipEmailLabel","slipFileLabel","slipPreviewLabel","slipNoteLabel","cancelSlipButton","submitSlipButton"].forEach((id) => {
                 const element = document.getElementById(id);
                 if (element) {
                     element.textContent = t(id);
@@ -817,6 +868,18 @@
 
         function formatMoney(amount) {
             return "$" + Number(amount || 0).toFixed(2);
+        }
+
+        function orderStatusText(status) {
+            const map = {
+                awaiting_slip_verification: t("awaitingSlipVerification"),
+                paid: t("paidStatus"),
+                shipping: t("shippingStatus"),
+                completed: t("completedStatus"),
+                slip_rejected: t("slipRejectedStatus"),
+                pending_payment: t("pendingPaymentStatus")
+            };
+            return map[status] || status;
         }
 
         function getOrderPayload() {
@@ -1053,6 +1116,57 @@
                 console.error("Error loading providers:", error);
             }
         }
+
+        async function loadOrderHistory() {
+            if (!userToken) {
+                document.getElementById("orderHistoryContainer").innerHTML = `<p class="loading">${t("pleaseLogin")}</p>`;
+                return;
+            }
+            try {
+                const response = await fetch(`${API_BASE}/api/user/orders`, {
+                    headers: {
+                        "Authorization": `Bearer ${userToken}`
+                    }
+                });
+                if (!response.ok) {
+                    throw new Error("Unable to load orders");
+                }
+                const data = await response.json();
+                const orders = data.orders || [];
+                if (!orders.length) {
+                    document.getElementById("orderHistoryContainer").innerHTML = `<p>${t("noOrdersYet")}</p>`;
+                    return;
+                }
+                document.getElementById("orderHistoryContainer").innerHTML = orders.map((order) => `
+                    <div class="order-card">
+                        <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap; margin-bottom:10px;">
+                            <div>
+                                <strong>${order.billing?.invoice_number || order.order_id}</strong><br>
+                                <small>${order.created_at ? new Date(order.created_at).toLocaleString() : "-"}</small>
+                            </div>
+                            <span class="order-status ${order.status_label}">${orderStatusText(order.status_label)}</span>
+                        </div>
+                        <div style="display:flex; justify-content:space-between; margin-bottom:8px;">
+                            <span>${t("totalLabel")}</span>
+                            <strong>${formatMoney(order.total_amount)}</strong>
+                        </div>
+                        <div>
+                            ${order.items.map((item) => `
+                                <div style="display:flex; gap:10px; align-items:center; margin-top:10px;">
+                                    ${item.image_url ? `<img src="${item.image_url}" alt="${item.name}" style="width:44px;height:44px;object-fit:cover;border-radius:8px;">` : ""}
+                                    <div>
+                                        <div><strong>${item.name}</strong></div>
+                                        <small>${item.quantity} × ${formatMoney(item.price_at_purchase)}</small>
+                                    </div>
+                                </div>
+                            `).join("")}
+                        </div>
+                    </div>
+                `).join("");
+            } catch (error) {
+                showMessage(`${t("errorPrefix")} ${error.message}`, "error");
+            }
+        }
         
         function renderProducts() {
             const container = document.getElementById("productsContainer");
@@ -1244,6 +1358,7 @@
                 window.pendingOrder = null;
                 orderPreview = null;
                 pendingSlipOrder = null;
+                await loadOrderHistory();
             } catch (error) {
                 showMessage(`${t("errorPrefix")} ${error.message}`, "error");
             }
@@ -1278,6 +1393,7 @@
             applyTranslations();
             await loadProviders();
             await loadProducts();
+            await loadOrderHistory();
             cartManager.load();
             document.getElementById("slipImageFile").addEventListener("change", previewSlipImage);
         });

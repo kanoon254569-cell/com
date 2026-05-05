@@ -250,6 +250,11 @@
             <h2 id="skuSummaryTitle">📦 SKU Summary</h2>
             <div id="sku-summary" class="loading">Loading...</div>
         </div>
+
+        <div class="section">
+            <h2 id="slipReviewTitle">🧾 Slip Reviews</h2>
+            <div id="slip-review-list" class="loading">Loading...</div>
+        </div>
     </div>
     
     <script src="/frontend-assets/i18n.js"></script>
@@ -273,6 +278,7 @@
                 ordersLabel: "📋 Orders",
                 inventoryAlertsTitle: "🚨 Inventory Alerts",
                 skuSummaryTitle: "📦 SKU Summary",
+                slipReviewTitle: "🧾 Slip Reviews",
                 loading: "Loading...",
                 unauthorized: "⚠️ Please login as admin first",
                 sku: "SKU",
@@ -280,6 +286,13 @@
                 stock: "Stock",
                 price: "Price",
                 totalValue: "Total Value",
+                customer: "Customer",
+                invoice: "Invoice",
+                total: "Total",
+                actions: "Actions",
+                approve: "Approve",
+                reject: "Reject",
+                noSlipReviews: "No slips waiting for review",
                 criticalAlert: "🚨 Critical Stock Alert!",
                 outOfStock: "{count} product(s) out of stock",
                 lowStockAlert: "⚠️ Low Stock Alert!",
@@ -298,6 +311,7 @@
                 ordersLabel: "📋 คำสั่งซื้อ",
                 inventoryAlertsTitle: "🚨 การแจ้งเตือนคลังสินค้า",
                 skuSummaryTitle: "📦 สรุป SKU",
+                slipReviewTitle: "🧾 ตรวจสลิป",
                 loading: "กำลังโหลด...",
                 unauthorized: "⚠️ กรุณาเข้าสู่ระบบในฐานะผู้ดูแลก่อน",
                 sku: "SKU",
@@ -305,6 +319,13 @@
                 stock: "สต็อก",
                 price: "ราคา",
                 totalValue: "มูลค่ารวม",
+                customer: "ลูกค้า",
+                invoice: "เลขบิล",
+                total: "รวม",
+                actions: "การจัดการ",
+                approve: "อนุมัติ",
+                reject: "ไม่อนุมัติ",
+                noSlipReviews: "ไม่มีสลิปรอตรวจ",
                 criticalAlert: "🚨 แจ้งเตือนสต็อกวิกฤต!",
                 outOfStock: "สินค้าหมดสต็อก {count} รายการ",
                 lowStockAlert: "⚠️ แจ้งเตือนสต็อกต่ำ!",
@@ -329,7 +350,7 @@
         
         function applyTranslations() {
             document.title = t("title");
-            ["pageTitle","pageSubtitle","logoutButton","totalProductsLabel","totalStockLabel","revenueLabel","ordersLabel","inventoryAlertsTitle","skuSummaryTitle"].forEach((id) => {
+            ["pageTitle","pageSubtitle","logoutButton","totalProductsLabel","totalStockLabel","revenueLabel","ordersLabel","inventoryAlertsTitle","skuSummaryTitle","slipReviewTitle"].forEach((id) => {
                 const element = document.getElementById(id);
                 if (element) {
                     element.textContent = t(id);
@@ -401,6 +422,7 @@
             
             // Load inventory status
             loadInventoryStatus();
+            loadSlipReviews();
         }
         
         async function loadInventoryStatus() {
@@ -441,6 +463,74 @@
                 
             } catch (error) {
                 console.error("Error loading inventory:", error);
+            }
+        }
+
+        async function reviewSlip(orderId, action) {
+            const note = prompt(action === "approve" ? "Review note (optional)" : "Reason for rejection (optional)") || "";
+            const response = await fetch(`${API_BASE}/api/admin/slip-reviews/${orderId}/${action}`, {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    "Authorization": `Bearer ${token}`
+                },
+                body: JSON.stringify({ note })
+            });
+
+            if (!response.ok) {
+                const error = await response.json();
+                showMessage(`${t("errorPrefix")} ${error.detail}`, "error");
+                return;
+            }
+
+            showMessage(action === "approve" ? "✅ Slip approved" : "✅ Slip rejected", "success");
+            loadSlipReviews();
+            loadDashboard();
+        }
+
+        async function loadSlipReviews() {
+            try {
+                const response = await fetch(`${API_BASE}/api/admin/slip-reviews`, {
+                    headers: {
+                        "Authorization": `Bearer ${token}`
+                    }
+                });
+                const data = await response.json();
+                const orders = data.orders || [];
+                if (!orders.length) {
+                    document.getElementById("slip-review-list").innerHTML = `<div class="success">${t("noSlipReviews")}</div>`;
+                    return;
+                }
+
+                document.getElementById("slip-review-list").innerHTML = `
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>${t("invoice")}</th>
+                                <th>${t("customer")}</th>
+                                <th>${t("total")}</th>
+                                <th>Slip</th>
+                                <th>${t("actions")}</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${orders.map((order) => `
+                                <tr>
+                                    <td>${order.invoice_number || "-"}</td>
+                                    <td>${order.customer_name}<br><small>${order.customer_email || ""}</small></td>
+                                    <td>$${(order.total_amount || 0).toFixed(2)}</td>
+                                    <td>${order.slip_image ? `<a href="${order.slip_image}" target="_blank">View Slip</a>` : "-"}</td>
+                                    <td style="display:flex; gap:8px;">
+                                        <button class="button" onclick="reviewSlip('${order.order_id}', 'approve')">${t("approve")}</button>
+                                        <button class="button danger" onclick="reviewSlip('${order.order_id}', 'reject')">${t("reject")}</button>
+                                    </td>
+                                </tr>
+                            `).join("")}
+                        </tbody>
+                    </table>
+                `;
+            } catch (error) {
+                showMessage(`${t("errorPrefix")} ${error.message}`, "error");
             }
         }
         
