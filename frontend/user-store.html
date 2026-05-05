@@ -570,6 +570,55 @@
             </form>
         </div>
     </div>
+
+    <div id="slipUploadModal" class="payment-modal">
+        <div class="payment-form">
+            <span class="close-modal" onclick="closeSlipUpload()">✕</span>
+            <h2 id="slipUploadTitle">📤 Upload Payment Slip</h2>
+            <div style="background:#f9f9f9; border-radius:8px; padding:15px; margin-bottom:16px;">
+                <div style="display:flex; justify-content:space-between; margin-bottom:8px;">
+                    <span id="slipOrderLabel">Order</span>
+                    <strong id="slipOrderId">-</strong>
+                </div>
+                <div style="display:flex; justify-content:space-between; margin-bottom:0;">
+                    <span id="slipInvoiceLabel">Invoice</span>
+                    <strong id="slipInvoiceNumber">-</strong>
+                </div>
+            </div>
+            <form id="slipUploadForm" onsubmit="submitSlip(event)">
+                <div class="form-group">
+                    <label id="slipCustomerNameLabel">Customer Name</label>
+                    <input type="text" id="slipCustomerName" required placeholder="John Doe">
+                </div>
+
+                <div class="form-group">
+                    <label id="slipEmailLabel">Email</label>
+                    <input type="email" id="slipCustomerEmail" required placeholder="customer@example.com">
+                </div>
+
+                <div class="form-group">
+                    <label id="slipFileLabel">Payment Slip</label>
+                    <input type="file" id="slipImageFile" accept="image/*" required>
+                </div>
+
+                <div class="payment-qr-section" style="margin-top:-4px;">
+                    <strong id="slipPreviewLabel">Slip Preview</strong>
+                    <img id="slipPreviewImage" class="payment-qr-image" alt="Slip preview" style="display:none;">
+                    <div id="slipPreviewPlaceholder" class="payment-bank-meta">No slip selected</div>
+                </div>
+
+                <div class="form-group">
+                    <label id="slipNoteLabel">Note</label>
+                    <input type="text" id="slipNote" placeholder="Optional note">
+                </div>
+
+                <div style="display: flex; gap: 10px;">
+                    <button type="button" class="button" style="background: #95a5a6;" onclick="closeSlipUpload()" id="cancelSlipButton">Cancel</button>
+                    <button type="submit" class="button" style="background: #27ae60; flex: 1;" id="submitSlipButton">Submit Slip</button>
+                </div>
+            </form>
+        </div>
+    </div>
     
     <script src="/frontend-assets/i18n.js"></script>
     <script>
@@ -584,6 +633,7 @@
         let providers = [];
         let cart = [];
         let orderPreview = null;
+        let pendingSlipOrder = null;
         const BANK_NAME = "Kasikornbank";
         const ACCOUNT_NAME = "Kanoon Commerce Co., Ltd.";
         const translations = {
@@ -620,6 +670,18 @@
                 paymentBeforeVatLabel: "Before VAT",
                 paymentTaxLabel: "VAT / Tax",
                 paymentNetTotalLabel: "Net Total",
+                slipUploadTitle: "📤 Upload Payment Slip",
+                slipOrderLabel: "Order",
+                slipInvoiceLabel: "Invoice",
+                slipCustomerNameLabel: "Customer Name",
+                slipEmailLabel: "Email",
+                slipFileLabel: "Payment Slip",
+                slipPreviewLabel: "Slip Preview",
+                slipPreviewEmpty: "No slip selected",
+                slipNoteLabel: "Note",
+                cancelSlipButton: "Cancel",
+                submitSlipButton: "Submit Slip",
+                awaitingSlipVerification: "⏳ Waiting for slip verification",
                 cancelPaymentButton: "Cancel",
                 payLabel: "Pay",
                 yourCartEmpty: "Your cart is empty",
@@ -677,6 +739,18 @@
                 paymentBeforeVatLabel: "ราคาก่อน VAT",
                 paymentTaxLabel: "VAT / ภาษี",
                 paymentNetTotalLabel: "รวมสุทธิ",
+                slipUploadTitle: "📤 ส่งสลิปยืนยัน",
+                slipOrderLabel: "ออเดอร์",
+                slipInvoiceLabel: "เลขบิล",
+                slipCustomerNameLabel: "ชื่อ ลค",
+                slipEmailLabel: "Email",
+                slipFileLabel: "สลิปโอนเงิน",
+                slipPreviewLabel: "ตัวอย่างสลิป",
+                slipPreviewEmpty: "ยังไม่ได้เลือกสลิป",
+                slipNoteLabel: "หมายเหตุ",
+                cancelSlipButton: "ยกเลิก",
+                submitSlipButton: "ส่งสลิป",
+                awaitingSlipVerification: "⏳ รอยืนยันสลิป",
                 cancelPaymentButton: "ยกเลิก",
                 payLabel: "ชำระ",
                 yourCartEmpty: "รถเข็นของคุณว่างอยู่",
@@ -718,7 +792,7 @@
         
         function applyTranslations() {
             document.title = t("title");
-            ["pageTitle","logoutButton","categoryLabel","providerLabel","cartTitle","discountCodeLabel","subtotalLabel","discountLabel","beforeVatLabel","taxLabel","totalLabel","netTotalLabel","checkoutButton","paymentTitle","qrSectionTitle","bankNameLabel","accountNameLabel","customerNameLabel","emailLabel","invoiceLabel","paymentSubtotalLabel","paymentDiscountLabel","paymentBeforeVatLabel","paymentTaxLabel","paymentNetTotalLabel","cancelPaymentButton","payLabel"].forEach((id) => {
+            ["pageTitle","logoutButton","categoryLabel","providerLabel","cartTitle","discountCodeLabel","subtotalLabel","discountLabel","beforeVatLabel","taxLabel","totalLabel","netTotalLabel","checkoutButton","paymentTitle","qrSectionTitle","bankNameLabel","accountNameLabel","customerNameLabel","emailLabel","invoiceLabel","paymentSubtotalLabel","paymentDiscountLabel","paymentBeforeVatLabel","paymentTaxLabel","paymentNetTotalLabel","cancelPaymentButton","payLabel","slipUploadTitle","slipOrderLabel","slipInvoiceLabel","slipCustomerNameLabel","slipEmailLabel","slipFileLabel","slipPreviewLabel","slipNoteLabel","cancelSlipButton","submitSlipButton"].forEach((id) => {
                 const element = document.getElementById(id);
                 if (element) {
                     element.textContent = t(id);
@@ -734,6 +808,10 @@
             const providerFilter = document.getElementById("providerFilter");
             if (providerFilter && providerFilter.options.length > 0) {
                 providerFilter.options[0].textContent = t("allProviders");
+            }
+            const slipPreviewPlaceholder = document.getElementById("slipPreviewPlaceholder");
+            if (slipPreviewPlaceholder) {
+                slipPreviewPlaceholder.textContent = t("slipPreviewEmpty");
             }
         }
 
@@ -1069,14 +1147,71 @@
                 }
                 
                 const orderData = await orderResponse.json();
-                const orderId = orderData.order_id;
-                
-                // Then, process payment
-                const customerName = document.getElementById("customerName").value.trim();
-                const customerEmail = document.getElementById("customerEmail").value.trim();
-                
-                const paymentResponse = await fetch(
-                    `${API_BASE}/api/user/orders/${orderId}/payment`,
+                openSlipUpload(orderData);
+            } catch (error) {
+                showMessage(`${t("errorPrefix")} ${error.message}`, "error");
+            }
+        }
+
+        function openSlipUpload(orderData) {
+            pendingSlipOrder = orderData;
+            document.getElementById("slipOrderId").textContent = orderData.order_id || "-";
+            document.getElementById("slipInvoiceNumber").textContent = orderData.billing?.invoice_number || "-";
+            document.getElementById("slipCustomerName").value = document.getElementById("customerName").value.trim();
+            document.getElementById("slipCustomerEmail").value = document.getElementById("customerEmail").value.trim();
+            document.getElementById("slipImageFile").value = "";
+            document.getElementById("slipNote").value = "";
+            document.getElementById("slipPreviewImage").style.display = "none";
+            document.getElementById("slipPreviewImage").src = "";
+            document.getElementById("slipPreviewPlaceholder").style.display = "block";
+            document.getElementById("slipPreviewPlaceholder").textContent = t("slipPreviewEmpty");
+            closePayment();
+            document.getElementById("slipUploadModal").classList.add("active");
+        }
+
+        function closeSlipUpload() {
+            document.getElementById("slipUploadModal").classList.remove("active");
+        }
+
+        async function previewSlipImage() {
+            const input = document.getElementById("slipImageFile");
+            const file = input.files?.[0];
+            if (!file) {
+                document.getElementById("slipPreviewImage").style.display = "none";
+                document.getElementById("slipPreviewPlaceholder").style.display = "block";
+                document.getElementById("slipPreviewPlaceholder").textContent = t("slipPreviewEmpty");
+                return null;
+            }
+            return await new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = () => {
+                    document.getElementById("slipPreviewImage").src = reader.result;
+                    document.getElementById("slipPreviewImage").style.display = "block";
+                    document.getElementById("slipPreviewPlaceholder").style.display = "none";
+                    resolve(reader.result);
+                };
+                reader.onerror = reject;
+                reader.readAsDataURL(file);
+            });
+        }
+
+        async function submitSlip(event) {
+            event.preventDefault();
+
+            if (!pendingSlipOrder?.order_id) {
+                showMessage(t("orderNotFound"), "error");
+                return;
+            }
+
+            try {
+                const slipImage = await previewSlipImage();
+                if (!slipImage) {
+                    showMessage(t("errorPrefix") + " " + t("slipPreviewEmpty"), "error");
+                    return;
+                }
+
+                const response = await fetch(
+                    `${API_BASE}/api/user/orders/${pendingSlipOrder.order_id}/submit-slip`,
                     {
                         method: "POST",
                         headers: {
@@ -1084,38 +1219,31 @@
                             "Authorization": `Bearer ${userToken}`
                         },
                         body: JSON.stringify({
-                            customer_name: customerName,
-                            email: customerEmail
+                            customer_name: document.getElementById("slipCustomerName").value.trim(),
+                            email: document.getElementById("slipCustomerEmail").value.trim(),
+                            slip_image: slipImage,
+                            note: document.getElementById("slipNote").value.trim()
                         })
                     }
                 );
-                
-                if (paymentResponse.ok) {
-                    const paymentData = await paymentResponse.json();
-                    const invoiceSuffix = paymentData.invoice_number
-                        ? ` (${template("invoiceReady", { invoice: paymentData.invoice_number })})`
-                        : "";
-                    showMessage(`${template("paymentSuccessful", { id: orderId })}${invoiceSuffix}`, "success");
-                    
-                    // Clear cart
-                    cart = [];
-                    cartManager.save();
-                    cartManager.render();
-                    
-                    // Close modals
-                    closePayment();
-                    toggleCart();
-                    
-                    // Reset form
-                    document.getElementById("paymentForm").reset();
-                    
-                    // Clear pending order
-                    window.pendingOrder = null;
-                    orderPreview = null;
-                } else {
-                    const error = await paymentResponse.json();
+
+                if (!response.ok) {
+                    const error = await response.json();
                     showMessage(`${t("paymentFailed")} ${error.detail}`, "error");
+                    return;
                 }
+
+                showMessage(`${template("paymentSuccessful", { id: pendingSlipOrder.order_id })} - ${t("awaitingSlipVerification")}`, "success");
+                cart = [];
+                cartManager.save();
+                cartManager.render();
+                closeSlipUpload();
+                toggleCart();
+                document.getElementById("paymentForm").reset();
+                document.getElementById("slipUploadForm").reset();
+                window.pendingOrder = null;
+                orderPreview = null;
+                pendingSlipOrder = null;
             } catch (error) {
                 showMessage(`${t("errorPrefix")} ${error.message}`, "error");
             }
@@ -1151,6 +1279,7 @@
             await loadProviders();
             await loadProducts();
             cartManager.load();
+            document.getElementById("slipImageFile").addEventListener("change", previewSlipImage);
         });
     </script>
 </body>

@@ -19,6 +19,7 @@ class OrderStatus(str, Enum):
 
 class PaymentStatus(str, Enum):
     PENDING = "pending"
+    PENDING_SLIP_VERIFICATION = "pending_slip_verification"
     PAID = "paid"
     FAILED = "failed"
 
@@ -135,6 +136,12 @@ class Order(BaseModel):
 class PaymentRequest(BaseModel):
     customer_name: str
     email: str
+
+class SlipUploadRequest(BaseModel):
+    customer_name: str
+    email: str
+    slip_image: str
+    note: Optional[str] = None
 
 # ===================== TRANSACTION LOG (Duplicate Purchase Prevention) =====================
 class TransactionLog(BaseModel):

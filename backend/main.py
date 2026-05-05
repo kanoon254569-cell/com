@@ -21,7 +21,7 @@ from .security import (
 )
 from .models import (
     UserCreate, User, ProductCreate, Product, ProductUpdate, OrderCreate, Order, LoginRequest,
-    UserRole, OrderStatus, PaymentStatus, RestockRequest, PaymentRequest
+    UserRole, OrderStatus, PaymentStatus, RestockRequest, PaymentRequest, SlipUploadRequest
 )
 from .data_loader import load_excel_data, seed_database
 from typing import Optional, List
@@ -1620,6 +1620,69 @@ async def process_payment(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Payment processing error: {str(e)}"
         )
+
+
+@app.post("/api/user/orders/{order_id}/submit-slip")
+async def submit_payment_slip(
+    order_id: str,
+    payload: SlipUploadRequest,
+    current_user: str = Depends(get_current_user)
+):
+    """Submit payment slip and move order to waiting-for-verification state."""
+    order = await OrderDB.get_order_by_id(order_id)
+
+    if not order or order.get("user_id") != current_user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Order not found"
+        )
+
+    if order.get("payment_status") == PaymentStatus.PAID:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Order already paid"
+        )
+
+    if not (payload.slip_image or "").strip():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Payment slip is required"
+        )
+
+    email_value = (payload.email or "").strip()
+    if "@" not in email_value or "." not in email_value.split("@")[-1]:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid email"
+        )
+
+    customer_name = (payload.customer_name or "").strip()
+    if len(customer_name) < 2:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid customer name"
+        )
+
+    await db.db["orders"].update_one(
+        {"_id": ObjectId(order_id)},
+        {"$set": {
+            "payment_status": PaymentStatus.PENDING_SLIP_VERIFICATION,
+            "status": OrderStatus.PENDING,
+            "fulfillment_status": "awaiting_slip_verification",
+            "customer_name": customer_name,
+            "customer_email": email_value,
+            "slip_image": payload.slip_image.strip(),
+            "slip_note": (payload.note or "").strip(),
+            "slip_submitted_at": datetime.utcnow(),
+            "updated_at": datetime.utcnow(),
+        }}
+    )
+
+    return {
+        "status": "pending_slip_verification",
+        "message": "Slip submitted successfully",
+        "order_id": order_id,
+    }
 
 @app.get("/api/user/orders/{order_id}/payment-status")
 async def get_payment_status(
