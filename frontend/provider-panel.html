@@ -233,6 +233,44 @@
                     </div>
                     <p class="max-w-md text-sm text-neutral-500">Create clean, searchable inventory entries with a single source of truth for SKU, stock, and pricing.</p>
                 </div>
+                <div class="mb-8 grid gap-5 lg:grid-cols-[1.2fr_0.9fr]">
+                    <div class="rounded-[28px] border border-black/10 bg-neutral-50 p-5">
+                        <div class="flex items-center justify-between gap-3">
+                            <div>
+                                <p class="text-xs font-semibold uppercase tracking-[0.2em] text-neutral-500">Shop Assignment</p>
+                                <h3 id="shopStudioTitle" class="mt-2 text-xl font-semibold text-black">🏬 Shop Studio</h3>
+                            </div>
+                            <span id="shopCountBadge" class="rounded-full border border-black/10 bg-white px-3 py-1 text-xs font-semibold text-neutral-600">0 shops</span>
+                        </div>
+                        <div class="mt-5">
+                            <label id="shopSelectLabel">Add product to shop *</label>
+                            <select name="provider_id" id="shopSelect" required>
+                                <option value="">Loading shops...</option>
+                            </select>
+                        </div>
+                        <div class="mt-5">
+                            <p class="mb-3 text-sm font-medium text-neutral-600">Available shops</p>
+                            <div id="shopChipList" class="flex flex-wrap gap-2">
+                                <span class="rounded-full border border-dashed border-black/15 bg-white px-3 py-2 text-xs text-neutral-400">Loading...</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="rounded-[28px] border border-black/10 bg-white p-5">
+                        <p class="text-xs font-semibold uppercase tracking-[0.2em] text-neutral-500">Create Shop</p>
+                        <h3 id="createShopTitle" class="mt-2 text-xl font-semibold text-black">➕ Add New Shop</h3>
+                        <form id="createShopForm" class="mt-5 space-y-4" onsubmit="handleCreateShop(event)">
+                            <div>
+                                <label id="shopNameLabel">Shop Name *</label>
+                                <input type="text" name="name" required placeholder="e.g., Kanoon Footwear">
+                            </div>
+                            <div>
+                                <label id="shopEmailLabel">Shop Email</label>
+                                <input type="email" name="email" placeholder="optional-shop@email.com">
+                            </div>
+                            <button type="submit" class="rounded-full border border-black bg-black px-5 py-3 text-sm font-semibold text-white transition hover:bg-neutral-800" id="createShopButton">Create Shop</button>
+                        </form>
+                    </div>
+                </div>
                 <form id="addProductForm" onsubmit="handleAddProduct(event)">
                     <div class="grid gap-5 lg:grid-cols-2">
                     <div class="form-group">
@@ -349,6 +387,12 @@
                         <label id="filterCategoryLabel">Filter by Category</label>
                         <select id="categoryFilter" onchange="loadMyProducts()">
                             <option value="">All Categories</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label id="filterShopLabel">Filter by Shop</label>
+                        <select id="shopFilter" onchange="loadMyProducts()">
+                            <option value="">All Shops</option>
                         </select>
                     </div>
                 </div>
@@ -550,6 +594,7 @@
         let token = localStorage.getItem("auth_token");
         let myProducts = [];
         let productCategories = [];
+        let providerShops = [];
         let salesHistory = [];
         let restockHistory = [];
         let currentEditingProductId = null;
@@ -570,6 +615,12 @@
                 tabRestockHistory: "📥 Restock History",
                 tabSlipReview: "🧾 Slip Review",
                 tabAllOrders: "📦 All Orders",
+                shopStudioTitle: "🏬 Shop Studio",
+                shopSelectLabel: "Add product to shop *",
+                createShopTitle: "➕ Add New Shop",
+                shopNameLabel: "Shop Name *",
+                shopEmailLabel: "Shop Email",
+                createShopButton: "Create Shop",
                 addProductTitle: "➕ Add New Product",
                 addNameLabel: "Product Name *",
                 addSkuLabel: "SKU (Stock Keeping Unit) *",
@@ -595,6 +646,7 @@
                 editImageLabel: "Product Image",
                 editDescriptionLabel: "Description",
                 filterCategoryLabel: "Filter by Category",
+                filterShopLabel: "Filter by Shop",
                 salesHistoryTitle: "🧾 Sales History",
                 salesDateLabel: "Select Day",
                 salesMonthLabel: "Month",
@@ -644,6 +696,7 @@
                 quantity: "Quantity",
                 customer: "Customer",
                 total: "Total",
+                store: "Store",
                 date: "Date",
                 reason: "Reason",
                 stockChange: "Stock Change",
@@ -659,6 +712,8 @@
                 noSalesHistory: "No sales history found for this filter.",
                 noRestockHistory: "No restock history found for this filter.",
                 noProviderOrders: "No orders found for this provider.",
+                noShopsYet: "No shops yet",
+                shopCreated: "✅ Shop created successfully!",
                 errorPrefix: "❌ Error:"
             },
             th: {
@@ -677,6 +732,12 @@
                 tabRestockHistory: "📥 ประวัติเติมสินค้า",
                 tabSlipReview: "🧾 ตรวจสลิป",
                 tabAllOrders: "📦 ออเดอร์ทั้งหมด",
+                shopStudioTitle: "🏬 จัดการร้านค้า",
+                shopSelectLabel: "เพิ่มสินค้าเข้าร้าน *",
+                createShopTitle: "➕ เพิ่มร้านค้าใหม่",
+                shopNameLabel: "ชื่อร้าน *",
+                shopEmailLabel: "อีเมลร้านค้า",
+                createShopButton: "สร้างร้านค้า",
                 addProductTitle: "➕ เพิ่มสินค้าใหม่",
                 addNameLabel: "ชื่อสินค้า *",
                 addSkuLabel: "SKU (รหัสสินค้า) *",
@@ -702,6 +763,7 @@
                 editImageLabel: "รูปสินค้า",
                 editDescriptionLabel: "รายละเอียด",
                 filterCategoryLabel: "กรองตามหมวดหมู่",
+                filterShopLabel: "กรองตามร้านค้า",
                 salesHistoryTitle: "🧾 ประวัติการขาย",
                 salesDateLabel: "เลือกวัน",
                 salesMonthLabel: "เดือน",
@@ -751,6 +813,7 @@
                 quantity: "จำนวน",
                 customer: "ลูกค้า",
                 total: "รวม",
+                store: "ร้านค้า",
                 date: "วันที่",
                 reason: "เหตุผล",
                 stockChange: "การเปลี่ยนสต็อก",
@@ -766,6 +829,8 @@
                 noSalesHistory: "ไม่พบประวัติการขายตามตัวกรองนี้",
                 noRestockHistory: "ไม่พบประวัติเติมสินค้าตามตัวกรองนี้",
                 noProviderOrders: "ไม่พบออเดอร์ของผู้ให้บริการนี้",
+                noShopsYet: "ยังไม่มีร้านค้า",
+                shopCreated: "✅ สร้างร้านค้าสำเร็จ!",
                 errorPrefix: "❌ ข้อผิดพลาด:"
             }
         };
@@ -789,10 +854,11 @@
                 "pageTitle","pageSubtitle","logoutButton","statProductsLabel","statStockLabel",
                 "statRevenueLabel","statOrdersLabel","tabAddProduct","tabManageStock","tabMyProducts",
                 "tabSalesHistory","tabRestockHistory","tabSlipReview","tabAllOrders",
+                "shopStudioTitle","shopSelectLabel","createShopTitle","shopNameLabel","shopEmailLabel","createShopButton",
                 "addProductTitle","addNameLabel","addSkuLabel","addCategoryLabel","addPriceLabel",
                 "addStockLabel","addImageLabel","addDescriptionLabel","addProductButton","manageStockTitle",
                 "selectProductLabel","quantityLabel","reasonLabel","addStockButton","myProductsTitle",
-                "filterCategoryLabel","salesHistoryTitle","salesDateLabel","salesMonthLabel","salesYearLabel",
+                "filterCategoryLabel","filterShopLabel","salesHistoryTitle","salesDateLabel","salesMonthLabel","salesYearLabel",
                 "salesCategoryLabel","restockHistoryTitle","restockDateLabel","restockMonthLabel",
                 "restockYearLabel","restockCategoryLabel","slipReviewTitle","allOrdersTitle",
                 "editModalTitle","editNameLabel","editSkuLabel","editCategoryLabel","editPriceLabel",
@@ -815,6 +881,7 @@
             if (!myProducts.length && myProductsTable.textContent.includes("Loading")) {
                 myProductsTable.innerHTML = `<p class="rounded-3xl border border-dashed border-black/15 bg-neutral-50 px-6 py-10 text-center text-neutral-500">${t("loading")}</p>`;
             }
+            populateShopOptions();
         }
 
         function formatCurrency(value) {
@@ -931,6 +998,95 @@
             });
         }
 
+        function populateShopOptions() {
+            const shopSelect = document.getElementById('shopSelect');
+            const shopFilter = document.getElementById('shopFilter');
+            const chipList = document.getElementById('shopChipList');
+            const shopCountBadge = document.getElementById('shopCountBadge');
+
+            if (shopCountBadge) {
+                shopCountBadge.textContent = `${providerShops.length} shop${providerShops.length === 1 ? '' : 's'}`;
+            }
+
+            if (shopSelect) {
+                const currentValue = shopSelect.value;
+                shopSelect.innerHTML = providerShops.length
+                    ? providerShops.map((shop) => `<option value="${shop.provider_id}">${shop.provider_name}${shop.is_primary ? ' • Main' : ''}</option>`).join('')
+                    : `<option value="">${t('noShopsYet')}</option>`;
+                if (currentValue && providerShops.some((shop) => shop.provider_id === currentValue)) {
+                    shopSelect.value = currentValue;
+                }
+            }
+
+            if (shopFilter) {
+                const currentValue = shopFilter.value;
+                shopFilter.innerHTML = `<option value="">${window.EcomI18n.getLanguage() === 'th' ? 'ทุกร้านค้า' : 'All Shops'}</option>${providerShops.map((shop) => `<option value="${shop.provider_id}">${shop.provider_name}</option>`).join('')}`;
+                shopFilter.value = currentValue;
+            }
+
+            if (chipList) {
+                chipList.innerHTML = providerShops.length
+                    ? providerShops.map((shop) => `
+                        <span class="inline-flex items-center gap-2 rounded-full border border-black/10 bg-white px-3 py-2 text-xs font-medium text-neutral-700">
+                            ${shop.provider_name}
+                            ${shop.is_primary ? '<span class="rounded-full bg-black px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-white">Main</span>' : ''}
+                        </span>
+                    `).join('')
+                    : `<span class="rounded-full border border-dashed border-black/15 bg-white px-3 py-2 text-xs text-neutral-400">${t('noShopsYet')}</span>`;
+            }
+        }
+
+        async function loadProviderShops() {
+            try {
+                const response = await fetch(`${API_BASE}/api/provider/shops`, {
+                    headers: {
+                        'Authorization': `Bearer ${token}`
+                    }
+                });
+                if (!response.ok) {
+                    const error = await response.json();
+                    throw new Error(error.detail || 'Failed to load shops');
+                }
+
+                const data = await response.json();
+                providerShops = data.shops || [];
+                populateShopOptions();
+            } catch (error) {
+                showMessage(`${t('errorPrefix')} ${error.message}`, 'error');
+            }
+        }
+
+        async function handleCreateShop(event) {
+            event.preventDefault();
+            const form = event.target;
+            const payload = {
+                name: form.elements.name.value.trim(),
+                email: form.elements.email.value.trim()
+            };
+
+            try {
+                const response = await fetch(`${API_BASE}/api/provider/shops`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${token}`
+                    },
+                    body: JSON.stringify(payload)
+                });
+
+                if (!response.ok) {
+                    const error = await response.json();
+                    throw new Error(error.detail || 'Failed to create shop');
+                }
+
+                showMessage(t('shopCreated'), 'success');
+                form.reset();
+                await loadProviderShops();
+            } catch (error) {
+                showMessage(`${t('errorPrefix')} ${error.message}`, 'error');
+            }
+        }
+
         function getHistoryFilterParams(prefix) {
             const dateValue = document.getElementById(`${prefix}DayFilter`).value;
             const monthValue = document.getElementById(`${prefix}MonthFilter`).value;
@@ -1008,7 +1164,7 @@
                 stock: parseInt(formData.get('stock')),
                 description: formData.get('description'),
                 image_url: formData.get('image_url'),
-                provider_id: "provider_001"
+                provider_id: formData.get('provider_id')
             };
             
             try {
@@ -1026,7 +1182,10 @@
                     e.target.reset();
                     setImagePreview('addImagePreview', 'addImagePlaceholder', '');
                     document.getElementById('addImageFile').value = '';
+                    populateShopOptions();
                     await loadProductCategories();
+                    await loadProductsForRestock();
+                    await loadMyProducts();
                     await loadDashboard();
                 } else {
                     const error = await response.json();
@@ -1070,7 +1229,7 @@
             myProducts.forEach(product => {
                 const option = document.createElement('option');
                 option.value = product._id;
-                option.textContent = `${product.name} (${t('currentLabel')}: ${product.stock})`;
+                option.textContent = `${product.name} - ${product.provider_name || '-'} (${t('currentLabel')}: ${product.stock})`;
                 select.appendChild(option);
             });
             
@@ -1134,8 +1293,12 @@
             try {
                 const params = new URLSearchParams();
                 const categoryFilter = document.getElementById('categoryFilter')?.value;
+                const shopFilter = document.getElementById('shopFilter')?.value;
                 if (categoryFilter) {
                     params.set('category', categoryFilter);
+                }
+                if (shopFilter) {
+                    params.set('provider_id', shopFilter);
                 }
 
                 const response = await fetch(`${API_BASE}/api/provider/products${params.toString() ? `?${params.toString()}` : ''}`, {
@@ -1166,6 +1329,7 @@
                                         <tr>
                                             <th class="px-6 py-4">${t('image')}</th>
                                             <th class="px-6 py-4">${t('productName')}</th>
+                                            <th class="px-6 py-4">${t('store')}</th>
                                             <th class="px-6 py-4">${t('sku')}</th>
                                             <th class="px-6 py-4">${t('category')}</th>
                                             <th class="px-6 py-4">${t('price')}</th>
@@ -1181,6 +1345,7 @@
                                                     <div class="font-medium text-black">${p.name}</div>
                                                     <div class="mt-1 text-xs text-neutral-500">${p.description || '-'}</div>
                                                 </td>
+                                                <td class="px-6 py-5 text-neutral-600">${p.provider_name || p.provider_id || '-'}</td>
                                                 <td class="px-6 py-5 text-neutral-600">${p.sku}</td>
                                                 <td class="px-6 py-5">
                                                     <span class="inline-flex rounded-full border border-black/10 bg-neutral-100 px-3 py-1 text-xs font-medium text-neutral-700">${p.category}</span>
@@ -1710,9 +1875,11 @@
             bindImagePreview('editImageUrl', 'editImagePreview', 'editImagePlaceholder');
             document.getElementById('addImageFile').addEventListener('change', () => syncImageInput('addImageFile', 'addImageUrl', 'addImagePreview', 'addImagePlaceholder'));
             document.getElementById('editImageFile').addEventListener('change', () => syncImageInput('editImageFile', 'editImageUrl', 'editImagePreview', 'editImagePlaceholder'));
+            await loadProviderShops();
             await loadProductCategories();
             await loadDashboard();
             await loadProductsForRestock();
+            await loadMyProducts();
         }
 
         window.EcomI18n.bindSelect(document.getElementById("languageSwitcher"));

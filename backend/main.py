@@ -21,7 +21,8 @@ from .security import (
 )
 from .models import (
     UserCreate, User, ProductCreate, Product, ProductUpdate, OrderCreate, Order, LoginRequest,
-    UserRole, OrderStatus, PaymentStatus, RestockRequest, PaymentRequest, SlipUploadRequest, SlipDecisionRequest
+    UserRole, OrderStatus, PaymentStatus, RestockRequest, PaymentRequest, SlipUploadRequest, SlipDecisionRequest,
+    ProviderShopCreate
 )
 from .data_loader import load_excel_data, seed_database
 from typing import Optional, List
@@ -410,6 +411,40 @@ async def serialize_backoffice_order(order: dict, provider_scope_ids: Optional[s
         "pricing": pricing,
         "items": filtered_items,
     }
+
+
+def slugify_shop_name(name: str) -> str:
+    slug = "".join(char.lower() if char.isalnum() else "-" for char in name.strip())
+    slug = "-".join(part for part in slug.split("-") if part)
+    return slug or "shop"
+
+
+async def list_provider_shops(owner_provider_id: str) -> List[dict]:
+    shops = []
+    owner = await UserDB.get_user_by_id(owner_provider_id)
+    if owner and owner.get("role") == "provider":
+        shops.append({
+            "provider_id": owner_provider_id,
+            "provider_name": owner.get("username") or owner.get("email", "").split("@")[0] or owner_provider_id,
+            "email": owner.get("email", ""),
+            "is_primary": True,
+        })
+
+    child_shops = await db.db["users"].find({
+        "role": "provider",
+        "owner_provider_id": owner_provider_id,
+        "is_active": True,
+    }).sort("created_at", 1).to_list(None)
+
+    for shop in child_shops:
+        shops.append({
+            "provider_id": str(shop.get("_id")),
+            "provider_name": shop.get("username") or shop.get("email", "").split("@")[0] or str(shop.get("_id")),
+            "email": shop.get("email", ""),
+            "is_primary": False,
+        })
+
+    return shops
 
 async def require_admin_user(current_user: str) -> dict:
     user = await UserDB.get_user_by_id(current_user)
@@ -1177,6 +1212,59 @@ async def admin_checkout(
 
 # ===================== PROVIDER ROUTES (Add Products & Services) =====================
 
+@app.get("/api/provider/shops")
+async def provider_get_shops(current_user: str = Depends(get_current_user)):
+    """Provider: list accessible shops for product assignment."""
+    shops = await list_provider_shops(current_user)
+    return {"shops": shops}
+
+
+@app.post("/api/provider/shops")
+async def provider_create_shop(
+    payload: ProviderShopCreate,
+    current_user: str = Depends(get_current_user)
+):
+    """Provider: create a child shop managed by the current provider."""
+    await db_rate_limiter.check_circuit_breaker()
+    if not await db_rate_limiter.check_user_rate(current_user):
+        raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail="Rate limit exceeded")
+
+    shop_name = payload.name.strip()
+    if not shop_name:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Shop name is required")
+
+    email = (payload.email or "").strip().lower()
+    if not email:
+        slug = slugify_shop_name(shop_name)
+        email = f"{slug}-{uuid.uuid4().hex[:8]}@shop.local"
+
+    existing_user = await UserDB.get_user_by_email(email)
+    if existing_user:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Shop email already exists")
+
+    now = datetime.utcnow()
+    temp_password = uuid.uuid4().hex
+    shop_data = {
+        "email": email,
+        "username": shop_name,
+        "password_hash": bcrypt.hashpw(temp_password.encode(), bcrypt.gensalt()).decode(),
+        "role": "provider",
+        "owner_provider_id": current_user,
+        "managed_by_provider_panel": True,
+        "is_active": True,
+        "created_at": now,
+        "updated_at": now,
+    }
+    result = await db.db["users"].insert_one(shop_data)
+    return {
+        "shop": {
+            "provider_id": str(result.inserted_id),
+            "provider_name": shop_name,
+            "email": email,
+            "is_primary": False,
+        }
+    }
+
 @app.post("/api/provider/products")
 async def provider_create_product(
     product: ProductCreate,
@@ -1197,7 +1285,14 @@ async def provider_create_product(
         )
     
     product_data = product.dict()
-    product_data["provider_id"] = current_user
+    provider_scopes = await get_provider_scopes(current_user)
+    target_provider_id = product.provider_id or current_user
+    if target_provider_id not in provider_scopes:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Selected shop is not assigned to this provider"
+        )
+    product_data["provider_id"] = target_provider_id
     
     product_id = await ProductDB.create_product(product_data)
     
@@ -1209,10 +1304,18 @@ async def provider_create_product(
 @app.get("/api/provider/products")
 async def provider_get_products(
     category: Optional[str] = None,
+    provider_id: Optional[str] = None,
     current_user: str = Depends(get_current_user)
 ):
     """Provider: Get own products"""
     products = await ProductDB.get_products_by_provider(current_user)
+    products = await enrich_products_with_provider_names(products)
+    normalized_provider_id = (provider_id or "").strip()
+    if normalized_provider_id:
+        products = [
+            product for product in products
+            if str(product.get("provider_id", "")) == normalized_provider_id
+        ]
     normalized_category = (category or "").strip()
     if normalized_category:
         products = [

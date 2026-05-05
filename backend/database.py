@@ -75,7 +75,14 @@ async def get_provider_scopes(provider_id: str):
         if user.get("email") in legacy_provider_emails:
             scopes.append("provider_001")
 
-    return scopes
+        child_shops = await db.db["users"].find({
+            "role": "provider",
+            "owner_provider_id": provider_id,
+            "is_active": True,
+        }).to_list(None)
+        scopes.extend(str(shop.get("_id")) for shop in child_shops if shop.get("_id"))
+
+    return list(dict.fromkeys(scopes))
 
 class ProductDB:
     @staticmethod
