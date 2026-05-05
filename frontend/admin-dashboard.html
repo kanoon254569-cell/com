@@ -257,6 +257,26 @@
         </div>
 
         <div class="section">
+            <h2 id="shopManagementTitle">🏬 Shop Management</h2>
+            <div style="display:grid; gap:16px; grid-template-columns:repeat(auto-fit,minmax(260px,1fr)); margin-bottom:16px;">
+                <div>
+                    <label id="ownerProviderLabel" style="display:block; margin-bottom:8px; font-weight:600;">Owner Provider</label>
+                    <select id="ownerProviderSelect"></select>
+                </div>
+                <div>
+                    <label id="shopNameLabel" style="display:block; margin-bottom:8px; font-weight:600;">Shop Name</label>
+                    <input id="adminShopName" type="text" placeholder="e.g., Kanoon Footwear">
+                </div>
+                <div>
+                    <label id="shopEmailLabel" style="display:block; margin-bottom:8px; font-weight:600;">Shop Email</label>
+                    <input id="adminShopEmail" type="email" placeholder="optional-shop@email.com">
+                </div>
+            </div>
+            <button class="button" id="createShopButton" onclick="createProviderShop()">Create Shop</button>
+            <div id="provider-shop-list" style="margin-top:18px;"></div>
+        </div>
+
+        <div class="section">
             <h2 id="allOrdersTitle">📦 All Orders</h2>
             <div id="all-orders-list" class="loading">Loading...</div>
         </div>
@@ -284,6 +304,11 @@
                 inventoryAlertsTitle: "🚨 Inventory Alerts",
                 skuSummaryTitle: "📦 SKU Summary",
                 slipReviewTitle: "🧾 Slip Reviews",
+                shopManagementTitle: "🏬 Shop Management",
+                ownerProviderLabel: "Owner Provider",
+                shopNameLabel: "Shop Name",
+                shopEmailLabel: "Shop Email",
+                createShopButton: "Create Shop",
                 allOrdersTitle: "📦 All Orders",
                 loading: "Loading...",
                 unauthorized: "⚠️ Please login as admin first",
@@ -318,6 +343,11 @@
                 inventoryAlertsTitle: "🚨 การแจ้งเตือนคลังสินค้า",
                 skuSummaryTitle: "📦 สรุป SKU",
                 slipReviewTitle: "🧾 ตรวจสลิป",
+                shopManagementTitle: "🏬 จัดการร้านค้า",
+                ownerProviderLabel: "ผู้ให้บริการเจ้าของร้าน",
+                shopNameLabel: "ชื่อร้าน",
+                shopEmailLabel: "อีเมลร้านค้า",
+                createShopButton: "สร้างร้านค้า",
                 allOrdersTitle: "📦 ออเดอร์ทั้งหมด",
                 loading: "กำลังโหลด...",
                 unauthorized: "⚠️ กรุณาเข้าสู่ระบบในฐานะผู้ดูแลก่อน",
@@ -357,7 +387,7 @@
         
         function applyTranslations() {
             document.title = t("title");
-            ["pageTitle","pageSubtitle","logoutButton","totalProductsLabel","totalStockLabel","revenueLabel","ordersLabel","inventoryAlertsTitle","skuSummaryTitle","slipReviewTitle","allOrdersTitle"].forEach((id) => {
+            ["pageTitle","pageSubtitle","logoutButton","totalProductsLabel","totalStockLabel","revenueLabel","ordersLabel","inventoryAlertsTitle","skuSummaryTitle","slipReviewTitle","shopManagementTitle","ownerProviderLabel","shopNameLabel","shopEmailLabel","createShopButton","allOrdersTitle"].forEach((id) => {
                 const element = document.getElementById(id);
                 if (element) {
                     element.textContent = t(id);
@@ -430,6 +460,7 @@
             // Load inventory status
             loadInventoryStatus();
             loadSlipReviews();
+            loadProviderOwners();
             loadAllOrders();
         }
         
@@ -637,6 +668,67 @@
                         </tbody>
                     </table>
                 `;
+            } catch (error) {
+                showMessage(`${t("errorPrefix")} ${error.message}`, "error");
+            }
+        }
+
+        async function loadProviderOwners() {
+            try {
+                const response = await fetch(`${API_BASE}/api/admin/providers`, {
+                    headers: {
+                        "Authorization": `Bearer ${token}`
+                    }
+                });
+                if (!response.ok) {
+                    const error = await response.json();
+                    throw new Error(error.detail || "Failed to load providers");
+                }
+
+                const data = await response.json();
+                const providers = data.providers || [];
+                const select = document.getElementById("ownerProviderSelect");
+                select.innerHTML = providers.length
+                    ? providers.map((provider) => `<option value="${provider.provider_id}">${provider.provider_name}</option>`).join("")
+                    : `<option value="">No providers</option>`;
+
+                document.getElementById("provider-shop-list").innerHTML = providers.length
+                    ? `<div class="success">${providers.length} provider(s) available for new shops.</div>`
+                    : `<div class="error">No provider accounts available.</div>`;
+            } catch (error) {
+                showMessage(`${t("errorPrefix")} ${error.message}`, "error");
+            }
+        }
+
+        async function createProviderShop() {
+            const providerId = document.getElementById("ownerProviderSelect").value;
+            const name = document.getElementById("adminShopName").value.trim();
+            const email = document.getElementById("adminShopEmail").value.trim();
+
+            if (!providerId || !name) {
+                showMessage(`${t("errorPrefix")} Provider and shop name are required`, "error");
+                return;
+            }
+
+            try {
+                const response = await fetch(`${API_BASE}/api/admin/provider-shops?provider_id=${encodeURIComponent(providerId)}`, {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json",
+                        "Authorization": `Bearer ${token}`
+                    },
+                    body: JSON.stringify({ name, email })
+                });
+                if (!response.ok) {
+                    const error = await response.json();
+                    throw new Error(error.detail || "Failed to create shop");
+                }
+
+                const data = await response.json();
+                document.getElementById("adminShopName").value = "";
+                document.getElementById("adminShopEmail").value = "";
+                document.getElementById("provider-shop-list").innerHTML = `<div class="success">Created shop: ${data.shop.provider_name}</div>`;
+                showMessage("✅ Shop created successfully", "success");
             } catch (error) {
                 showMessage(`${t("errorPrefix")} ${error.message}`, "error");
             }

@@ -319,6 +319,7 @@ async def serialize_backoffice_order(order: dict, provider_scope_ids: Optional[s
     product_lookup = {}
     provider_lookup = {}
     user = None
+    provider_item_map = order.get("provider_item_map") or {}
 
     user_id = str(order.get("user_id", "") or "")
     if user_id:
@@ -349,6 +350,12 @@ async def serialize_backoffice_order(order: dict, provider_scope_ids: Optional[s
         product_id = str(item.get("product_id", "") or "")
         product = product_lookup.get(product_id, {})
         provider_id = str(product.get("provider_id", "") or item.get("provider_id", "") or "")
+        if not provider_id and product_id:
+            for mapped_provider_id, mapped_product_ids in provider_item_map.items():
+                mapped_ids = {str(mapped_id) for mapped_id in (mapped_product_ids or [])}
+                if product_id in mapped_ids:
+                    provider_id = str(mapped_provider_id)
+                    break
         if provider_scope_ids and provider_id not in provider_scope_ids:
             continue
 
@@ -370,7 +377,28 @@ async def serialize_backoffice_order(order: dict, provider_scope_ids: Optional[s
         })
 
     if provider_scope_ids and not filtered_items:
-        return {}
+        order_provider_ids = {
+            str(provider_id) for provider_id in (order.get("provider_ids") or [order.get("provider_id")])
+            if provider_id
+        }
+        if not (order_provider_ids & provider_scope_ids):
+            return {}
+
+        for item in order.get("items", []):
+            quantity = int(item.get("quantity", 0) or 0)
+            price_at_purchase = float(item.get("price_at_purchase", 0) or 0)
+            filtered_items.append({
+                "product_id": str(item.get("product_id", "") or ""),
+                "name": item.get("name") or "Unknown product",
+                "image_url": "",
+                "provider_id": None,
+                "provider_name": "-",
+                "sku": "",
+                "category": "",
+                "quantity": quantity,
+                "price_at_purchase": price_at_purchase,
+                "line_total": round(quantity * price_at_purchase, 2),
+            })
 
     provider_subtotal = round(sum(item["line_total"] for item in filtered_items), 2)
     pricing = order.get("pricing") or {}
@@ -773,6 +801,82 @@ async def admin_orders(current_user: str = Depends(get_current_user)):
     for order in orders:
         serialized_orders.append(await serialize_backoffice_order(order))
     return {"orders": serialized_orders}
+
+
+@app.get("/api/admin/providers")
+async def admin_provider_list(current_user: str = Depends(get_current_user)):
+    """Admin: list primary providers that can own shops."""
+    await enforce_admin_access(current_user)
+    providers = await db.db["users"].find({
+        "role": "provider",
+        "$or": [
+            {"owner_provider_id": {"$exists": False}},
+            {"owner_provider_id": None},
+            {"managed_by_provider_panel": {"$ne": True}},
+        ],
+        "is_active": True,
+    }).sort("created_at", 1).to_list(None)
+
+    return {
+        "providers": [
+            {
+                "provider_id": str(provider.get("_id")),
+                "provider_name": provider.get("username") or provider.get("email", "").split("@")[0] or str(provider.get("_id")),
+                "email": provider.get("email", ""),
+            }
+            for provider in providers
+        ]
+    }
+
+
+@app.post("/api/admin/provider-shops")
+async def admin_create_provider_shop(
+    payload: ProviderShopCreate,
+    provider_id: str = Query(...),
+    current_user: str = Depends(get_current_user)
+):
+    """Admin: create a shop under a selected provider."""
+    await enforce_admin_access(current_user)
+
+    owner_provider = await UserDB.get_user_by_id(provider_id)
+    if not owner_provider or owner_provider.get("role") != "provider":
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Provider not found")
+
+    shop_name = payload.name.strip()
+    if not shop_name:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Shop name is required")
+
+    email = (payload.email or "").strip().lower()
+    if not email:
+        slug = slugify_shop_name(shop_name)
+        email = f"{slug}-{uuid.uuid4().hex[:8]}@shop.local"
+
+    existing_user = await UserDB.get_user_by_email(email)
+    if existing_user:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Shop email already exists")
+
+    now = datetime.utcnow()
+    temp_password = uuid.uuid4().hex
+    shop_data = {
+        "email": email,
+        "username": shop_name,
+        "password_hash": bcrypt.hashpw(temp_password.encode(), bcrypt.gensalt()).decode(),
+        "role": "provider",
+        "owner_provider_id": provider_id,
+        "managed_by_admin_panel": True,
+        "is_active": True,
+        "created_at": now,
+        "updated_at": now,
+    }
+    result = await db.db["users"].insert_one(shop_data)
+    return {
+        "shop": {
+            "provider_id": str(result.inserted_id),
+            "provider_name": shop_name,
+            "email": email,
+            "owner_provider_id": provider_id,
+        }
+    }
 
 
 @app.post("/api/admin/slip-reviews/{order_id}/approve")
