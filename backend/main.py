@@ -449,6 +449,7 @@ def slugify_shop_name(name: str) -> str:
 
 async def list_provider_shops(owner_provider_id: str) -> List[dict]:
     shops = []
+    seen_shop_ids = set()
     owner = await UserDB.get_user_by_id(owner_provider_id)
     if owner and owner.get("role") == "provider":
         shops.append({
@@ -457,6 +458,7 @@ async def list_provider_shops(owner_provider_id: str) -> List[dict]:
             "email": owner.get("email", ""),
             "is_primary": True,
         })
+        seen_shop_ids.add(owner_provider_id)
 
     child_shops = await db.db["users"].find({
         "role": "provider",
@@ -465,12 +467,40 @@ async def list_provider_shops(owner_provider_id: str) -> List[dict]:
     }).sort("created_at", 1).to_list(None)
 
     for shop in child_shops:
+        shop_id = str(shop.get("_id"))
+        if shop_id in seen_shop_ids:
+            continue
         shops.append({
-            "provider_id": str(shop.get("_id")),
-            "provider_name": shop.get("username") or shop.get("email", "").split("@")[0] or str(shop.get("_id")),
+            "provider_id": shop_id,
+            "provider_name": shop.get("username") or shop.get("email", "").split("@")[0] or shop_id,
             "email": shop.get("email", ""),
             "is_primary": False,
         })
+        seen_shop_ids.add(shop_id)
+
+    provider_scopes = await get_provider_scopes(owner_provider_id)
+    scoped_products = await db.db["products"].find({
+        "provider_id": {"$in": provider_scopes}
+    }).to_list(None)
+    products_by_provider = {}
+    for product in scoped_products:
+        provider_id = str(product.get("provider_id") or "")
+        if not provider_id:
+            continue
+        products_by_provider.setdefault(provider_id, product)
+
+    for provider_id, sample_product in products_by_provider.items():
+        if provider_id in seen_shop_ids:
+            continue
+        shops.append({
+            "provider_id": provider_id,
+            "provider_name": provider_id,
+            "email": "",
+            "is_primary": False,
+            "legacy": True,
+            "source_product_name": sample_product.get("name", ""),
+        })
+        seen_shop_ids.add(provider_id)
 
     return shops
 
