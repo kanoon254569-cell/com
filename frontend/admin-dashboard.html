@@ -200,6 +200,102 @@
             border: 1px solid #d5dbe0;
         }
 
+        .shop-layout {
+            display: grid;
+            gap: 20px;
+            grid-template-columns: minmax(320px, 420px) minmax(0, 1fr);
+            align-items: start;
+        }
+
+        .shop-card {
+            border: 1px solid #e5e7eb;
+            border-radius: 24px;
+            padding: 24px;
+            background: #ffffff;
+            box-shadow: 0 12px 30px rgba(15, 23, 42, 0.06);
+        }
+
+        .shop-card .eyebrow {
+            font-size: 11px;
+            letter-spacing: 0.18em;
+            text-transform: uppercase;
+            color: #9ca3af;
+            margin-bottom: 10px;
+            font-weight: 700;
+        }
+
+        .shop-card h3 {
+            font-size: 30px;
+            line-height: 1.15;
+            color: #111827;
+            margin-bottom: 22px;
+        }
+
+        .shop-card label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 600;
+            color: #111827;
+        }
+
+        .shop-card input,
+        .shop-card select {
+            width: 100%;
+            padding: 14px 16px;
+            border-radius: 16px;
+            border: 1px solid #d1d5db;
+            margin-bottom: 16px;
+            font-size: 15px;
+            background: #ffffff;
+        }
+
+        .shop-card input:focus,
+        .shop-card select:focus {
+            outline: none;
+            border-color: #111827;
+            box-shadow: 0 0 0 4px rgba(17, 24, 39, 0.08);
+        }
+
+        .shop-submit {
+            background: #000000;
+            color: #ffffff;
+            border: none;
+            border-radius: 9999px;
+            padding: 12px 18px;
+            font-weight: 700;
+            cursor: pointer;
+            transition: transform 0.2s ease, opacity 0.2s ease;
+        }
+
+        .shop-submit:hover {
+            opacity: 0.92;
+            transform: translateY(-1px);
+        }
+
+        .shop-info-panel {
+            border: 1px solid #e5e7eb;
+            border-radius: 24px;
+            padding: 24px;
+            background: linear-gradient(180deg, #ffffff 0%, #f9fafb 100%);
+        }
+
+        .shop-info-panel h3 {
+            font-size: 20px;
+            color: #111827;
+            margin-bottom: 10px;
+        }
+
+        .shop-info-panel p {
+            color: #6b7280;
+            line-height: 1.6;
+        }
+
+        @media (max-width: 900px) {
+            .shop-layout {
+                grid-template-columns: 1fr;
+            }
+        }
+
     </style>
 </head>
 <body>
@@ -258,22 +354,24 @@
 
         <div class="section">
             <h2 id="shopManagementTitle">🏬 Shop Management</h2>
-            <div style="display:grid; gap:16px; grid-template-columns:repeat(auto-fit,minmax(260px,1fr)); margin-bottom:16px;">
-                <div>
-                    <label id="ownerProviderLabel" style="display:block; margin-bottom:8px; font-weight:600;">Owner Provider</label>
+            <div class="shop-layout">
+                <div class="shop-card">
+                    <div class="eyebrow">Create Shop</div>
+                    <h3>➕ Add New Shop</h3>
+                    <label id="ownerProviderLabel">Owner Provider</label>
                     <select id="ownerProviderSelect"></select>
-                </div>
-                <div>
-                    <label id="shopNameLabel" style="display:block; margin-bottom:8px; font-weight:600;">Shop Name</label>
+                    <label id="shopNameLabel">Shop Name *</label>
                     <input id="adminShopName" type="text" placeholder="e.g., Kanoon Footwear">
-                </div>
-                <div>
-                    <label id="shopEmailLabel" style="display:block; margin-bottom:8px; font-weight:600;">Shop Email</label>
+                    <label id="shopEmailLabel">Shop Email</label>
                     <input id="adminShopEmail" type="email" placeholder="optional-shop@email.com">
+                    <button class="shop-submit" id="createShopButton" onclick="createProviderShop()">Create Shop</button>
+                </div>
+                <div class="shop-info-panel">
+                    <h3>Provider Shop Directory</h3>
+                    <p>Create extra storefronts for each provider here. After the shop is created, providers can choose that shop when adding new products.</p>
+                    <div id="provider-shop-list" style="margin-top:18px;"></div>
                 </div>
             </div>
-            <button class="button" id="createShopButton" onclick="createProviderShop()">Create Shop</button>
-            <div id="provider-shop-list" style="margin-top:18px;"></div>
         </div>
 
         <div class="section">
