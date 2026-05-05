@@ -59,6 +59,15 @@ export const studioApi = {
   bootstrap() {
     return request("/api/admin/studio/bootstrap");
   },
+  listProviders() {
+    return request("/api/admin/providers");
+  },
+  createProviderShop(providerId, payload) {
+    return request(`/api/admin/provider-shops?provider_id=${encodeURIComponent(providerId)}`, {
+      method: "POST",
+      body: payload
+    });
+  },
   createProfile(payload) {
     return request("/api/admin/studio/profiles", { method: "POST", body: payload });
   },

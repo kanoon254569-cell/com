@@ -457,6 +457,75 @@
             </div>
           </div>
         </section>
+
+        <section class="grid gap-6 lg:grid-cols-[0.95fr_1.05fr]">
+          <article class="panel p-6">
+            <div class="panel-header">
+              <div>
+                <p class="text-xs uppercase tracking-[0.22em] text-white/40">Create Shop</p>
+                <h2 class="mt-2 text-2xl font-semibold">➕ Add New Shop</h2>
+              </div>
+              <ArchiveBoxIcon class="h-6 w-6 text-white/55" />
+            </div>
+
+            <form class="space-y-4" @submit.prevent="submitShop">
+              <div>
+                <label class="label">Owner Provider</label>
+                <select v-model="shopForm.provider_id" class="field" required>
+                  <option value="" disabled>Select provider</option>
+                  <option v-for="provider in providers" :key="provider.provider_id" :value="provider.provider_id">
+                    {{ provider.provider_name }}
+                  </option>
+                </select>
+              </div>
+              <div>
+                <label class="label">Shop Name *</label>
+                <input v-model="shopForm.name" class="field" type="text" placeholder="e.g., Kanoon Footwear" required />
+              </div>
+              <div>
+                <label class="label">Shop Email</label>
+                <input v-model="shopForm.email" class="field" type="email" placeholder="optional-shop@email.com" />
+              </div>
+              <div class="flex flex-wrap gap-3">
+                <button class="button-primary" type="submit">Create Shop</button>
+                <button class="button-secondary" type="button" @click="resetShopForm">Reset</button>
+              </div>
+            </form>
+          </article>
+
+          <article class="panel p-6">
+            <div class="panel-header">
+              <div>
+                <p class="text-xs uppercase tracking-[0.22em] text-white/40">Shop Directory</p>
+                <h2 class="mt-2 text-2xl font-semibold">Providers ready for new shops.</h2>
+              </div>
+              <ClipboardDocumentListIcon class="h-6 w-6 text-white/55" />
+            </div>
+
+            <div v-if="shopMessage" class="mb-4 rounded-[1.2rem] border border-emerald-400/20 bg-emerald-400/10 px-4 py-3 text-sm text-emerald-100">
+              {{ shopMessage }}
+            </div>
+
+            <div v-if="providers.length" class="space-y-3">
+              <div
+                v-for="provider in providers"
+                :key="provider.provider_id"
+                class="rounded-[1.5rem] border border-white/10 bg-white/[0.025] px-4 py-4"
+              >
+                <div class="flex items-start justify-between gap-3">
+                  <div>
+                    <p class="font-medium">{{ provider.provider_name }}</p>
+                    <p class="mt-1 text-sm text-white/45">{{ provider.provider_id }}</p>
+                  </div>
+                  <span class="chip">provider</span>
+                </div>
+              </div>
+            </div>
+            <div v-else class="rounded-[1.5rem] border border-dashed border-white/10 px-4 py-8 text-center text-sm text-white/40">
+              No providers loaded yet.
+            </div>
+          </article>
+        </section>
       </main>
 
       <div v-else-if="errorMessage" class="panel p-12 text-center text-white/75">
@@ -479,6 +548,7 @@ import {
   UserCircleIcon
 } from "@heroicons/vue/24/outline";
 import { useAppStore } from "./stores/app";
+import { studioApi } from "./services/api";
 
 function productDefaults() {
   return {
@@ -516,6 +586,14 @@ function orderDefaults(profileId = null, profileName = "") {
   };
 }
 
+function shopDefaults(providerId = "") {
+  return {
+    provider_id: providerId,
+    name: "",
+    email: ""
+  };
+}
+
 export default {
   name: "App",
   components: {
@@ -537,7 +615,10 @@ export default {
       crudTabs: ["Product", "Order", "Profile"],
       productForm: productDefaults(),
       profileForm: profileDefaults(),
-      orderForm: orderDefaults()
+      orderForm: orderDefaults(),
+      providers: [],
+      shopForm: shopDefaults(),
+      shopMessage: ""
     };
   },
   computed: {
@@ -580,6 +661,7 @@ export default {
     await this.store.initialize();
     this.selectedProfileId = this.store.activeProfileId;
     this.hydrateForms();
+    await this.loadProviders();
   },
   methods: {
     money(value) {
@@ -598,6 +680,18 @@ export default {
       }
       this.productForm = productDefaults();
       this.selectedProfileId = this.store.activeProfileId;
+    },
+    async loadProviders() {
+      try {
+        const data = await studioApi.listProviders();
+        this.providers = data.providers || [];
+        const fallbackProviderId = this.providers[0]?.provider_id || "";
+        if (!this.shopForm.provider_id) {
+          this.shopForm.provider_id = fallbackProviderId;
+        }
+      } catch (error) {
+        this.shopMessage = error.message || "Unable to load providers.";
+      }
     },
     onProfileChange() {
       this.store.selectProfile(this.selectedProfileId);
@@ -685,6 +779,20 @@ export default {
     async removeOrder(id) {
       await this.store.deleteOrder(id);
       this.resetOrderForm();
+    },
+    resetShopForm() {
+      this.shopForm = shopDefaults(this.providers[0]?.provider_id || "");
+      this.shopMessage = "";
+    },
+    async submitShop() {
+      await studioApi.createProviderShop(this.shopForm.provider_id, {
+        name: this.shopForm.name,
+        email: this.shopForm.email
+      });
+      const createdName = this.shopForm.name;
+      this.resetShopForm();
+      this.shopMessage = `Created shop: ${createdName}`;
+      await this.loadProviders();
     }
   },
   watch: {
