@@ -1558,17 +1558,18 @@ async def process_payment(
                 detail="Order already paid"
             )
         
-        # === Step 2: Validate card format ===
-        if len(payment_info.card_number) < 16 or not payment_info.card_number.replace(" ", "").isdigit():
+        # === Step 2: Validate payer details ===
+        if len((payment_info.customer_name or "").strip()) < 2:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Invalid card number"
+                detail="Invalid customer name"
             )
-        
-        if len(payment_info.cvv) != 3 or not payment_info.cvv.isdigit():
+
+        email_value = (payment_info.email or "").strip()
+        if "@" not in email_value or "." not in email_value.split("@")[-1]:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Invalid CVV"
+                detail="Invalid email"
             )
         
         # === Step 3: Process payment (mock) ===
@@ -1596,7 +1597,8 @@ async def process_payment(
                     },
                     "updated_at": datetime.utcnow(),
                     "payment_date": datetime.utcnow(),
-                    "card_last_four": payment_info.card_number[-4:]
+                    "customer_name": payment_info.customer_name.strip(),
+                    "customer_email": email_value
                 }
             }
         )
@@ -1608,7 +1610,7 @@ async def process_payment(
             "amount": (order.get("pricing") or {}).get("grand_total", order.get("total_amount")),
             "invoice_number": (order.get("billing") or {}).get("invoice_number"),
             "pricing": order.get("pricing"),
-            "card_last_four": payment_info.card_number[-4:]
+            "customer_email": email_value
         }
     
     except HTTPException as he:

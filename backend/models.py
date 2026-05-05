@@ -133,10 +133,8 @@ class Order(BaseModel):
         from_attributes = True
 
 class PaymentRequest(BaseModel):
-    card_number: str
-    card_holder: str
-    expiry: str
-    cvv: str
+    customer_name: str
+    email: str
 
 # ===================== TRANSACTION LOG (Duplicate Purchase Prevention) =====================
 class TransactionLog(BaseModel):

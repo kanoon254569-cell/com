@@ -325,6 +325,31 @@
             margin-bottom: 20px;
             text-align: center;
         }
+
+        .payment-qr-section {
+            background: #f9f9f9;
+            border-radius: 8px;
+            padding: 18px;
+            margin-bottom: 18px;
+            text-align: center;
+        }
+
+        .payment-qr-image {
+            width: 220px;
+            height: 220px;
+            object-fit: contain;
+            border-radius: 12px;
+            background: white;
+            padding: 10px;
+            margin: 12px auto;
+            box-shadow: inset 0 0 0 1px #e5e7eb;
+        }
+
+        .payment-bank-meta {
+            font-size: 14px;
+            line-height: 1.7;
+            color: #374151;
+        }
         
         .form-group {
             margin-bottom: 15px;
@@ -479,6 +504,10 @@
                     <span id="totalLabel">Total:</span>
                     <span id="totalPrice">$0.00</span>
                 </div>
+                <div class="cart-total" style="margin-top:-10px; font-size:16px; color:#16a34a;">
+                    <span id="netTotalLabel">Net Total:</span>
+                    <span id="netTotalPrice">$0.00</span>
+                </div>
             <button class="checkout-button" onclick="checkout()" id="checkoutButton">Proceed to Checkout</button>
         </div>
     </div>
@@ -488,26 +517,23 @@
         <div class="payment-form">
             <span class="close-modal" onclick="closePayment()">✕</span>
             <h2 id="paymentTitle">💳 Payment Details</h2>
+            <div class="payment-qr-section">
+                <strong id="qrSectionTitle">Scan QR to Pay</strong>
+                <img id="paymentQrImage" class="payment-qr-image" alt="Payment QR code">
+                <div class="payment-bank-meta">
+                    <div><strong id="bankNameLabel">Bank:</strong> <span id="bankNameValue">KBank</span></div>
+                    <div><strong id="accountNameLabel">Account Name:</strong> <span id="accountNameValue">Kanoon Commerce Co., Ltd.</span></div>
+                </div>
+            </div>
             <form id="paymentForm" onsubmit="processPayment(event)">
                 <div class="form-group">
-                    <label id="cardHolderLabel">Cardholder Name</label>
-                    <input type="text" id="cardHolder" required placeholder="John Doe">
+                    <label id="customerNameLabel">Customer Name</label>
+                    <input type="text" id="customerName" required placeholder="John Doe">
                 </div>
                 
                 <div class="form-group">
-                    <label id="cardNumberLabel">Card Number</label>
-                    <input type="text" id="cardNumber" required placeholder="1234 5678 9012 3456" maxlength="19">
-                </div>
-                
-                <div class="form-row">
-                    <div class="form-group">
-                        <label id="expiryLabel">Expiry (MM/YY)</label>
-                        <input type="text" id="expiry" required placeholder="12/25" maxlength="5">
-                    </div>
-                    <div class="form-group">
-                        <label id="cvvLabel">CVV</label>
-                        <input type="text" id="cvv" required placeholder="123" maxlength="3">
-                    </div>
+                    <label id="emailLabel">Email</label>
+                    <input type="email" id="customerEmail" required placeholder="customer@example.com">
                 </div>
 
                 <div style="background:#f9f9f9; border-radius:8px; padding:15px; margin-bottom:16px;">
@@ -532,6 +558,10 @@
                         <span id="paymentTax">$0.00</span>
                     </div>
                 </div>
+                <div style="display:flex; justify-content:space-between; margin:-4px 0 16px; font-weight:700; color:#16a34a;">
+                    <span id="paymentNetTotalLabel">Net Total</span>
+                    <span id="paymentNetTotal">$0.00</span>
+                </div>
                 
                 <div style="display: flex; gap: 10px;">
                     <button type="button" class="button" style="background: #95a5a6;" onclick="closePayment()" id="cancelPaymentButton">Cancel</button>
@@ -554,6 +584,8 @@
         let providers = [];
         let cart = [];
         let orderPreview = null;
+        const BANK_NAME = "Kasikornbank";
+        const ACCOUNT_NAME = "Kanoon Commerce Co., Ltd.";
         const translations = {
             en: {
                 title: "Online Store - Shop Now!",
@@ -574,17 +606,20 @@
                 beforeVatLabel: "Before VAT:",
                 taxLabel: "VAT / Tax:",
                 totalLabel: "Total:",
+                netTotalLabel: "Net Total:",
                 checkoutButton: "Proceed to Checkout",
                 paymentTitle: "💳 Payment Details",
-                cardHolderLabel: "Cardholder Name",
-                cardNumberLabel: "Card Number",
-                expiryLabel: "Expiry (MM/YY)",
-                cvvLabel: "CVV",
+                qrSectionTitle: "Scan QR to Pay",
+                bankNameLabel: "Bank:",
+                accountNameLabel: "Account Name:",
+                customerNameLabel: "Customer Name",
+                emailLabel: "Email",
                 invoiceLabel: "Invoice",
                 paymentSubtotalLabel: "Subtotal",
                 paymentDiscountLabel: "Discount",
                 paymentBeforeVatLabel: "Before VAT",
                 paymentTaxLabel: "VAT / Tax",
+                paymentNetTotalLabel: "Net Total",
                 cancelPaymentButton: "Cancel",
                 payLabel: "Pay",
                 yourCartEmpty: "Your cart is empty",
@@ -628,17 +663,20 @@
                 beforeVatLabel: "ราคาก่อน VAT:",
                 taxLabel: "VAT / ภาษี:",
                 totalLabel: "รวม:",
+                netTotalLabel: "รวมสุทธิ:",
                 checkoutButton: "ดำเนินการชำระเงิน",
                 paymentTitle: "💳 รายละเอียดการชำระเงิน",
-                cardHolderLabel: "ชื่อบนบัตร",
-                cardNumberLabel: "หมายเลขบัตร",
-                expiryLabel: "วันหมดอายุ (ดด/ปป)",
-                cvvLabel: "CVV",
+                qrSectionTitle: "สแกน QR เพื่อชำระเงิน",
+                bankNameLabel: "ธนาคาร:",
+                accountNameLabel: "ชื่อบัญชี:",
+                customerNameLabel: "ชื่อ ลค",
+                emailLabel: "Email",
                 invoiceLabel: "เลขบิล",
                 paymentSubtotalLabel: "ยอดก่อนส่วนลด",
                 paymentDiscountLabel: "ส่วนลด",
                 paymentBeforeVatLabel: "ราคาก่อน VAT",
                 paymentTaxLabel: "VAT / ภาษี",
+                paymentNetTotalLabel: "รวมสุทธิ",
                 cancelPaymentButton: "ยกเลิก",
                 payLabel: "ชำระ",
                 yourCartEmpty: "รถเข็นของคุณว่างอยู่",
@@ -680,7 +718,7 @@
         
         function applyTranslations() {
             document.title = t("title");
-            ["pageTitle","logoutButton","categoryLabel","providerLabel","cartTitle","discountCodeLabel","subtotalLabel","discountLabel","beforeVatLabel","taxLabel","totalLabel","checkoutButton","paymentTitle","cardHolderLabel","cardNumberLabel","expiryLabel","cvvLabel","invoiceLabel","paymentSubtotalLabel","paymentDiscountLabel","paymentBeforeVatLabel","paymentTaxLabel","cancelPaymentButton","payLabel"].forEach((id) => {
+            ["pageTitle","logoutButton","categoryLabel","providerLabel","cartTitle","discountCodeLabel","subtotalLabel","discountLabel","beforeVatLabel","taxLabel","totalLabel","netTotalLabel","checkoutButton","paymentTitle","qrSectionTitle","bankNameLabel","accountNameLabel","customerNameLabel","emailLabel","invoiceLabel","paymentSubtotalLabel","paymentDiscountLabel","paymentBeforeVatLabel","paymentTaxLabel","paymentNetTotalLabel","cancelPaymentButton","payLabel"].forEach((id) => {
                 const element = document.getElementById(id);
                 if (element) {
                     element.textContent = t(id);
@@ -688,6 +726,8 @@
             });
             document.getElementById("searchInput").placeholder = t("searchPlaceholder");
             document.getElementById("discountCode").placeholder = "SAVE10";
+            document.getElementById("bankNameValue").textContent = BANK_NAME;
+            document.getElementById("accountNameValue").textContent = ACCOUNT_NAME;
             document.querySelectorAll("[data-category-key]").forEach((option) => {
                 option.textContent = t(option.dataset.categoryKey);
             });
@@ -709,7 +749,7 @@
                     price_at_purchase: item.price
                 })),
                 shipping_address: "123 Your Street, City",
-                payment_method: "credit_card",
+                payment_method: "qr_transfer",
                 discount_code: document.getElementById("discountCode").value.trim() || null
             };
         }
@@ -720,12 +760,20 @@
             document.getElementById("beforeVatPrice").textContent = formatMoney(pricing?.taxable_amount);
             document.getElementById("taxPrice").textContent = formatMoney(pricing?.tax_amount);
             document.getElementById("totalPrice").textContent = formatMoney(pricing?.grand_total);
+            document.getElementById("netTotalPrice").textContent = formatMoney(pricing?.grand_total);
             document.getElementById("payAmount").textContent = formatMoney(pricing?.grand_total);
             document.getElementById("invoiceNumber").textContent = billing?.invoice_number || "Preview";
             document.getElementById("paymentSubtotal").textContent = formatMoney(pricing?.subtotal);
             document.getElementById("paymentDiscount").textContent = "-" + formatMoney(pricing?.discount_amount);
             document.getElementById("paymentBeforeVat").textContent = formatMoney(pricing?.taxable_amount);
             document.getElementById("paymentTax").textContent = formatMoney(pricing?.tax_amount);
+            document.getElementById("paymentNetTotal").textContent = formatMoney(pricing?.grand_total);
+        }
+
+        function updatePaymentQr(pricing) {
+            const amount = Number(pricing?.grand_total || 0).toFixed(2);
+            const qrPayload = `BANK:${BANK_NAME}|ACCOUNT:${ACCOUNT_NAME}|AMOUNT:${amount}|CURRENCY:USD`;
+            document.getElementById("paymentQrImage").src = `https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(qrPayload)}`;
         }
 
         async function refreshOrderSummary() {
@@ -738,18 +786,21 @@
                     tax_amount: 0,
                     grand_total: 0
                 });
+                updatePaymentQr({ grand_total: 0 });
                 return;
             }
 
             if (!userToken) {
                 const subtotal = cartManager.getTotal();
-                applyOrderSummary({
+                const fallbackPricing = {
                     subtotal,
                     discount_amount: 0,
                     taxable_amount: subtotal ? subtotal / 1.07 : 0,
-                    tax_amount: 0,
+                    tax_amount: subtotal ? subtotal - (subtotal / 1.07) : 0,
                     grand_total: subtotal
-                });
+                };
+                applyOrderSummary(fallbackPricing);
+                updatePaymentQr(fallbackPricing);
                 return;
             }
 
@@ -769,15 +820,18 @@
 
                 orderPreview = await response.json();
                 applyOrderSummary(orderPreview.pricing, orderPreview.billing);
+                updatePaymentQr(orderPreview.pricing);
             } catch (error) {
                 const subtotal = cartManager.getTotal();
-                applyOrderSummary({
+                const fallbackPricing = {
                     subtotal,
                     discount_amount: 0,
                     taxable_amount: subtotal ? subtotal / 1.07 : 0,
-                    tax_amount: 0,
+                    tax_amount: subtotal ? subtotal - (subtotal / 1.07) : 0,
                     grand_total: subtotal
-                });
+                };
+                applyOrderSummary(fallbackPricing);
+                updatePaymentQr(fallbackPricing);
             }
         }
         
@@ -1018,10 +1072,8 @@
                 const orderId = orderData.order_id;
                 
                 // Then, process payment
-                const cardHolder = document.getElementById("cardHolder").value;
-                const cardNumber = document.getElementById("cardNumber").value.replace(/\s/g, "");
-                const expiry = document.getElementById("expiry").value;
-                const cvv = document.getElementById("cvv").value;
+                const customerName = document.getElementById("customerName").value.trim();
+                const customerEmail = document.getElementById("customerEmail").value.trim();
                 
                 const paymentResponse = await fetch(
                     `${API_BASE}/api/user/orders/${orderId}/payment`,
@@ -1032,10 +1084,8 @@
                             "Authorization": `Bearer ${userToken}`
                         },
                         body: JSON.stringify({
-                            card_holder: cardHolder,
-                            card_number: cardNumber,
-                            expiry,
-                            cvv
+                            customer_name: customerName,
+                            email: customerEmail
                         })
                     }
                 );
