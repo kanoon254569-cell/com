@@ -313,6 +313,104 @@ async def serialize_slip_review_order(order: dict) -> dict:
         "items": items,
     }
 
+
+async def serialize_backoffice_order(order: dict, provider_scope_ids: Optional[set[str]] = None) -> dict:
+    product_lookup = {}
+    provider_lookup = {}
+    user = None
+
+    user_id = str(order.get("user_id", "") or "")
+    if user_id:
+        user = await UserDB.get_user_by_id(user_id)
+
+    for item in order.get("items", []):
+        product_id = str(item.get("product_id", "") or "")
+        if not product_id:
+            continue
+        product = await ProductDB.get_product_by_id(product_id)
+        if product:
+            product_lookup[product_id] = product
+            provider_id = str(product.get("provider_id", "") or "")
+            if provider_id and provider_id not in provider_lookup:
+                provider_user = await UserDB.get_user_by_id(provider_id)
+                if provider_user:
+                    provider_lookup[provider_id] = (
+                        provider_user.get("username")
+                        or provider_user.get("email", "").split("@")[0]
+                        or provider_id
+                    )
+                else:
+                    provider_lookup[provider_id] = provider_id
+
+    filtered_items = []
+    provider_ids = set()
+    for item in order.get("items", []):
+        product_id = str(item.get("product_id", "") or "")
+        product = product_lookup.get(product_id, {})
+        provider_id = str(product.get("provider_id", "") or item.get("provider_id", "") or "")
+        if provider_scope_ids and provider_id not in provider_scope_ids:
+            continue
+
+        quantity = int(item.get("quantity", 0) or 0)
+        price_at_purchase = float(item.get("price_at_purchase", 0) or 0)
+        line_total = round(quantity * price_at_purchase, 2)
+        provider_ids.add(provider_id)
+        filtered_items.append({
+            "product_id": product_id,
+            "name": product.get("name") or item.get("name") or "Unknown product",
+            "image_url": product.get("image_url", "") or "",
+            "provider_id": provider_id or None,
+            "provider_name": provider_lookup.get(provider_id, provider_id or "-"),
+            "sku": product.get("sku", "") or "",
+            "category": product.get("category", "") or "",
+            "quantity": quantity,
+            "price_at_purchase": price_at_purchase,
+            "line_total": line_total,
+        })
+
+    if provider_scope_ids and not filtered_items:
+        return {}
+
+    provider_subtotal = round(sum(item["line_total"] for item in filtered_items), 2)
+    pricing = order.get("pricing") or {}
+    billing = order.get("billing") or {}
+    customer_name = (
+        order.get("customer_name")
+        or order.get("user_name")
+        or (user.get("username") if user else "")
+        or "Unknown customer"
+    )
+    customer_email = (
+        order.get("customer_email")
+        or (user.get("email") if user else "")
+        or ""
+    )
+
+    return {
+        "order_id": str(order.get("_id")),
+        "invoice_number": billing.get("invoice_number") or "",
+        "customer_name": customer_name,
+        "customer_email": customer_email,
+        "status": str(order.get("status", "") or "").lower(),
+        "payment_status": str(order.get("payment_status", "") or "").lower(),
+        "fulfillment_status": str(order.get("fulfillment_status", "") or "").lower(),
+        "status_label": derive_user_order_status(order),
+        "total_amount": float(order.get("total_amount", 0) or 0),
+        "provider_subtotal": provider_subtotal,
+        "item_count": sum(item["quantity"] for item in filtered_items),
+        "created_at": order.get("created_at").isoformat() if order.get("created_at") else None,
+        "updated_at": order.get("updated_at").isoformat() if order.get("updated_at") else None,
+        "shipping_address": order.get("shipping_address", "") or "",
+        "payment_method": order.get("payment_method", "") or "",
+        "slip_image": order.get("slip_image", "") or "",
+        "slip_note": order.get("slip_note", "") or "",
+        "slip_review_note": order.get("slip_review_note", "") or "",
+        "provider_ids": [provider_id for provider_id in provider_ids if provider_id],
+        "provider_names": [provider_lookup.get(provider_id, provider_id) for provider_id in provider_ids if provider_id],
+        "pricing": pricing,
+        "items": filtered_items,
+    }
+
 async def require_admin_user(current_user: str) -> dict:
     user = await UserDB.get_user_by_id(current_user)
     if not user or user.get("role") != UserRole.ADMIN:
@@ -629,6 +727,17 @@ async def admin_slip_reviews(current_user: str = Depends(get_current_user)):
     for order in orders:
         reviews.append(await serialize_slip_review_order(order))
     return {"orders": reviews}
+
+
+@app.get("/api/admin/orders")
+async def admin_orders(current_user: str = Depends(get_current_user)):
+    """Admin: list all orders with full details for backoffice review."""
+    await enforce_admin_access(current_user)
+    orders = await db.db["orders"].find({}).sort("created_at", -1).to_list(None)
+    serialized_orders = []
+    for order in orders:
+        serialized_orders.append(await serialize_backoffice_order(order))
+    return {"orders": serialized_orders}
 
 
 @app.post("/api/admin/slip-reviews/{order_id}/approve")
@@ -1359,6 +1468,26 @@ async def provider_slip_reviews(current_user: str = Depends(get_current_user)):
     for order in orders:
         reviews.append(await serialize_slip_review_order(order))
     return {"orders": reviews}
+
+
+@app.get("/api/provider/orders")
+async def provider_orders(current_user: str = Depends(get_current_user)):
+    """Provider: list all orders that include this provider's products."""
+    provider_scopes = await get_provider_scopes(current_user)
+    provider_scope_ids = set(provider_scopes)
+    orders = await db.db["orders"].find({
+        "$or": [
+            {"provider_id": {"$in": provider_scopes}},
+            {"provider_ids": {"$in": provider_scopes}},
+        ],
+    }).sort("created_at", -1).to_list(None)
+
+    serialized_orders = []
+    for order in orders:
+        serialized = await serialize_backoffice_order(order, provider_scope_ids=provider_scope_ids)
+        if serialized:
+            serialized_orders.append(serialized)
+    return {"orders": serialized_orders}
 
 
 @app.post("/api/provider/slip-reviews/{order_id}/approve")

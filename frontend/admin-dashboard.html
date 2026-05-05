@@ -255,6 +255,11 @@
             <h2 id="slipReviewTitle">🧾 Slip Reviews</h2>
             <div id="slip-review-list" class="loading">Loading...</div>
         </div>
+
+        <div class="section">
+            <h2 id="allOrdersTitle">📦 All Orders</h2>
+            <div id="all-orders-list" class="loading">Loading...</div>
+        </div>
     </div>
     
     <script src="/frontend-assets/i18n.js"></script>
@@ -279,6 +284,7 @@
                 inventoryAlertsTitle: "🚨 Inventory Alerts",
                 skuSummaryTitle: "📦 SKU Summary",
                 slipReviewTitle: "🧾 Slip Reviews",
+                allOrdersTitle: "📦 All Orders",
                 loading: "Loading...",
                 unauthorized: "⚠️ Please login as admin first",
                 sku: "SKU",
@@ -312,6 +318,7 @@
                 inventoryAlertsTitle: "🚨 การแจ้งเตือนคลังสินค้า",
                 skuSummaryTitle: "📦 สรุป SKU",
                 slipReviewTitle: "🧾 ตรวจสลิป",
+                allOrdersTitle: "📦 ออเดอร์ทั้งหมด",
                 loading: "กำลังโหลด...",
                 unauthorized: "⚠️ กรุณาเข้าสู่ระบบในฐานะผู้ดูแลก่อน",
                 sku: "SKU",
@@ -350,7 +357,7 @@
         
         function applyTranslations() {
             document.title = t("title");
-            ["pageTitle","pageSubtitle","logoutButton","totalProductsLabel","totalStockLabel","revenueLabel","ordersLabel","inventoryAlertsTitle","skuSummaryTitle","slipReviewTitle"].forEach((id) => {
+            ["pageTitle","pageSubtitle","logoutButton","totalProductsLabel","totalStockLabel","revenueLabel","ordersLabel","inventoryAlertsTitle","skuSummaryTitle","slipReviewTitle","allOrdersTitle"].forEach((id) => {
                 const element = document.getElementById(id);
                 if (element) {
                     element.textContent = t(id);
@@ -423,6 +430,7 @@
             // Load inventory status
             loadInventoryStatus();
             loadSlipReviews();
+            loadAllOrders();
         }
         
         async function loadInventoryStatus() {
@@ -524,6 +532,106 @@
                                         <button class="button" onclick="reviewSlip('${order.order_id}', 'approve')">${t("approve")}</button>
                                         <button class="button danger" onclick="reviewSlip('${order.order_id}', 'reject')">${t("reject")}</button>
                                     </td>
+                                </tr>
+                            `).join("")}
+                        </tbody>
+                    </table>
+                `;
+            } catch (error) {
+                showMessage(`${t("errorPrefix")} ${error.message}`, "error");
+            }
+        }
+
+        function formatDateTime(value) {
+            if (!value) return "-";
+            return new Date(value).toLocaleString(window.EcomI18n.getLanguage() === "th" ? "th-TH" : "en-US", {
+                year: "numeric",
+                month: "short",
+                day: "numeric",
+                hour: "2-digit",
+                minute: "2-digit"
+            });
+        }
+
+        function prettyStatus(value) {
+            if (!value) return "-";
+            return String(value).replaceAll("_", " ").replace(/\b\w/g, (char) => char.toUpperCase());
+        }
+
+        function renderAdminOrderItems(items = []) {
+            if (!items.length) {
+                return `<div style="color:#7f8c8d;">-</div>`;
+            }
+            return `
+                <div style="display:grid; gap:10px;">
+                    ${items.map((item) => `
+                        <div style="display:flex; gap:12px; align-items:center; padding:10px; background:#f8fafc; border-radius:10px;">
+                            ${item.image_url ? `<img src="${item.image_url}" alt="${item.name}" style="width:56px; height:56px; object-fit:cover; border-radius:10px;">` : `<div style="width:56px; height:56px; border-radius:10px; background:#ecf0f1; display:flex; align-items:center; justify-content:center; color:#7f8c8d; font-size:11px;">IMG</div>`}
+                            <div style="flex:1;">
+                                <div style="font-weight:600; color:#2c3e50;">${item.name}</div>
+                                <div style="font-size:12px; color:#7f8c8d;">${item.provider_name || "-"} ${item.sku ? `• ${item.sku}` : ""}</div>
+                                <div style="font-size:12px; color:#7f8c8d;">${item.quantity} x $${(item.price_at_purchase || 0).toFixed(2)} = $${(item.line_total || 0).toFixed(2)}</div>
+                            </div>
+                        </div>
+                    `).join("")}
+                </div>
+            `;
+        }
+
+        async function loadAllOrders() {
+            try {
+                const response = await fetch(`${API_BASE}/api/admin/orders`, {
+                    headers: {
+                        "Authorization": `Bearer ${token}`
+                    }
+                });
+                if (!response.ok) {
+                    const error = await response.json();
+                    throw new Error(error.detail || "Failed to load orders");
+                }
+
+                const data = await response.json();
+                const orders = data.orders || [];
+                if (!orders.length) {
+                    document.getElementById("all-orders-list").innerHTML = `<div class="success">No orders found.</div>`;
+                    return;
+                }
+
+                document.getElementById("all-orders-list").innerHTML = `
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Invoice</th>
+                                <th>${t("customer")}</th>
+                                <th>Status</th>
+                                <th>${t("total")}</th>
+                                <th>Providers</th>
+                                <th>Items</th>
+                                <th>Date</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${orders.map((order) => `
+                                <tr>
+                                    <td>
+                                        <strong>${order.invoice_number || "-"}</strong><br>
+                                        <small style="color:#7f8c8d;">${order.order_id}</small>
+                                    </td>
+                                    <td>
+                                        <strong>${order.customer_name || "-"}</strong><br>
+                                        <small style="color:#7f8c8d;">${order.customer_email || ""}</small>
+                                    </td>
+                                    <td>
+                                        <div><strong>${prettyStatus(order.status_label)}</strong></div>
+                                        <small style="color:#7f8c8d;">Pay: ${prettyStatus(order.payment_status)} • Ship: ${prettyStatus(order.fulfillment_status)}</small>
+                                    </td>
+                                    <td>
+                                        <strong>$${(order.total_amount || 0).toFixed(2)}</strong><br>
+                                        <small style="color:#7f8c8d;">Items: ${order.item_count || 0}</small>
+                                    </td>
+                                    <td>${(order.provider_names || []).join(", ") || "-"}</td>
+                                    <td style="min-width:340px;">${renderAdminOrderItems(order.items || [])}</td>
+                                    <td>${formatDateTime(order.created_at)}</td>
                                 </tr>
                             `).join("")}
                         </tbody>
