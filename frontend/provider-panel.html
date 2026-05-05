@@ -1041,6 +1041,21 @@
             }
         }
 
+        function buildFallbackShopsFromProducts(products = []) {
+            const map = new Map();
+            products.forEach((product) => {
+                const providerId = String(product.provider_id || '').trim();
+                if (!providerId || map.has(providerId)) return;
+                map.set(providerId, {
+                    provider_id: providerId,
+                    provider_name: product.provider_name || providerId,
+                    email: '',
+                    is_primary: providerId === 'provider_001' || providerId === 'provider',
+                });
+            });
+            return Array.from(map.values());
+        }
+
         async function loadProviderShops() {
             try {
                 const response = await fetch(`${API_BASE}/api/provider/shops`, {
@@ -1057,7 +1072,11 @@
                 providerShops = data.shops || [];
                 populateShopOptions();
             } catch (error) {
-                showMessage(`${t('errorPrefix')} ${error.message}`, 'error');
+                console.error('Failed to load provider shops', error);
+                if (!providerShops.length && myProducts.length) {
+                    providerShops = buildFallbackShopsFromProducts(myProducts);
+                    populateShopOptions();
+                }
             }
         }
 
@@ -1315,6 +1334,10 @@
                 if (response.ok) {
                     const data = await response.json();
                     myProducts = data.products || [];
+                    if (!providerShops.length && myProducts.length) {
+                        providerShops = buildFallbackShopsFromProducts(myProducts);
+                        populateShopOptions();
+                    }
 
                     if (!myProducts.length) {
                         document.getElementById('myProductsTable').innerHTML = `
@@ -1899,12 +1922,22 @@
             bindImagePreview('editImageUrl', 'editImagePreview', 'editImagePlaceholder');
             document.getElementById('addImageFile').addEventListener('change', () => syncImageInput('addImageFile', 'addImageUrl', 'addImagePreview', 'addImagePlaceholder'));
             document.getElementById('editImageFile').addEventListener('change', () => syncImageInput('editImageFile', 'editImageUrl', 'editImagePreview', 'editImagePlaceholder'));
-            await loadProviderShops();
-            await loadProductCategories();
-            await loadDashboard();
-            await loadProductsForRestock();
-            await loadMyProducts();
-            await loadAllOrders();
+            const loadSteps = [
+                ['products', loadMyProducts],
+                ['shops', loadProviderShops],
+                ['categories', loadProductCategories],
+                ['dashboard', loadDashboard],
+                ['restock', loadProductsForRestock],
+                ['orders', loadAllOrders],
+            ];
+
+            for (const [label, loader] of loadSteps) {
+                try {
+                    await loader();
+                } catch (error) {
+                    console.error(`Provider panel step failed: ${label}`, error);
+                }
+            }
         }
 
         window.EcomI18n.bindSelect(document.getElementById("languageSwitcher"));
