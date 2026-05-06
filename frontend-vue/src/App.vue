@@ -477,6 +477,7 @@
                     {{ provider.provider_name }}
                   </option>
                 </select>
+                <p class="mt-2 text-sm text-white/45">Use this dropdown to choose the main provider account that will own the new shop.</p>
               </div>
               <div>
                 <label class="label">Shop Name *</label>
@@ -497,7 +498,7 @@
             <div class="panel-header">
               <div>
                 <p class="text-xs uppercase tracking-[0.22em] text-white/40">Shop Directory</p>
-                <h2 class="mt-2 text-2xl font-semibold">Providers ready for new shops.</h2>
+                <h2 class="mt-2 text-2xl font-semibold">Current shops from the user storefront.</h2>
               </div>
               <ClipboardDocumentListIcon class="h-6 w-6 text-white/55" />
             </div>
@@ -506,23 +507,24 @@
               {{ shopMessage }}
             </div>
 
-            <div v-if="providers.length" class="space-y-3">
+            <div v-if="storefrontShops.length" class="space-y-3">
               <div
-                v-for="provider in providers"
-                :key="provider.provider_id"
+                v-for="shop in storefrontShops"
+                :key="shop.provider_id"
                 class="rounded-[1.5rem] border border-white/10 bg-white/[0.025] px-4 py-4"
               >
                 <div class="flex items-start justify-between gap-3">
                   <div>
-                    <p class="font-medium">{{ provider.provider_name }}</p>
-                    <p class="mt-1 text-sm text-white/45">{{ provider.provider_id }}</p>
+                    <p class="font-medium">{{ shop.provider_name }}</p>
+                    <p class="mt-1 text-sm text-white/45">{{ shop.provider_id }}</p>
+                    <p class="mt-2 text-xs uppercase tracking-[0.16em] text-white/35">{{ shop.productCount }} products on user page</p>
                   </div>
-                  <span class="chip">provider</span>
+                  <span class="chip">store</span>
                 </div>
               </div>
             </div>
             <div v-else class="rounded-[1.5rem] border border-dashed border-white/10 px-4 py-8 text-center text-sm text-white/40">
-              No providers loaded yet.
+              No storefront shops loaded yet.
             </div>
           </article>
         </section>
@@ -630,6 +632,24 @@ export default {
     },
     products() {
       return this.store?.products || [];
+    },
+    storefrontShops() {
+      const map = new Map();
+      this.products.forEach((product) => {
+        const providerId = String(product.provider_id || "").trim();
+        if (!providerId) return;
+        const existing = map.get(providerId);
+        if (existing) {
+          existing.productCount += 1;
+          return;
+        }
+        map.set(providerId, {
+          provider_id: providerId,
+          provider_name: product.provider_name || providerId,
+          productCount: 1
+        });
+      });
+      return Array.from(map.values());
     },
     orders() {
       return this.store?.orders || [];

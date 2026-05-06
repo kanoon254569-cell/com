@@ -160,6 +160,7 @@ def serialize_product(product: dict) -> dict:
         "description": product.get("description", "") or "",
         "image_url": product.get("image_url", "") or "",
         "provider_id": product.get("provider_id"),
+        "provider_name": product.get("provider_name") or product.get("provider_id") or "",
     }
 
 
@@ -524,7 +525,8 @@ async def enforce_admin_access(current_user: str) -> dict:
 
 async def build_admin_studio_snapshot() -> dict:
     users = await db.db["users"].find({}).sort("created_at", -1).to_list(None)
-    products = await db.db["products"].find({}).sort("updated_at", -1).to_list(None)
+    raw_products = await db.db["products"].find({}).sort("updated_at", -1).to_list(None)
+    products = await enrich_products_with_provider_names(raw_products)
     orders = await db.db["orders"].find({}).sort("created_at", -1).to_list(None)
 
     serialized_profiles = [serialize_profile(user) for user in users]
