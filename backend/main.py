@@ -848,16 +848,23 @@ async def admin_provider_list(current_user: str = Depends(get_current_user)):
         ],
         "is_active": True,
     }).sort("created_at", 1).to_list(None)
+    provider_payloads = []
+    for provider in providers:
+        provider_id = str(provider.get("_id"))
+        shops = await list_provider_shops(provider_id)
+        shop_names = [shop.get("provider_name", "") for shop in shops if shop.get("provider_name")]
+        provider_payloads.append(
+            {
+                "provider_id": provider_id,
+                "provider_name": provider.get("username") or provider.get("email", "").split("@")[0] or provider_id,
+                "email": provider.get("email", ""),
+                "shop_count": len(shops),
+                "shop_names": shop_names,
+            }
+        )
 
     return {
-        "providers": [
-            {
-                "provider_id": str(provider.get("_id")),
-                "provider_name": provider.get("username") or provider.get("email", "").split("@")[0] or str(provider.get("_id")),
-                "email": provider.get("email", ""),
-            }
-            for provider in providers
-        ]
+        "providers": provider_payloads
     }
 
 

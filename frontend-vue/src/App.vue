@@ -474,10 +474,19 @@
                 <select v-model="shopForm.provider_id" class="field" required>
                   <option value="" disabled>Select provider</option>
                   <option v-for="provider in providers" :key="provider.provider_id" :value="provider.provider_id">
-                    {{ provider.provider_name }}
+                    {{ provider.provider_name }} · {{ provider.shop_count || 0 }} shops
                   </option>
                 </select>
                 <p class="mt-2 text-sm text-white/45">Use this dropdown to choose the main provider account that will own the new shop.</p>
+                <div v-if="selectedProviderInfo && selectedProviderInfo.shop_names?.length" class="mt-3 flex flex-wrap gap-2">
+                  <span
+                    v-for="shopName in selectedProviderInfo.shop_names"
+                    :key="shopName"
+                    class="rounded-full border border-white/10 px-3 py-1 text-xs text-white/60"
+                  >
+                    {{ shopName }}
+                  </span>
+                </div>
               </div>
               <div>
                 <label class="label">Shop Name *</label>
@@ -650,6 +659,9 @@ export default {
         });
       });
       return Array.from(map.values());
+    },
+    selectedProviderInfo() {
+      return this.providers.find((provider) => provider.provider_id === this.shopForm.provider_id) || null;
     },
     orders() {
       return this.store?.orders || [];
