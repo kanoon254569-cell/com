@@ -68,6 +68,11 @@ export const studioApi = {
       body: payload
     });
   },
+  deleteProviderShop(shopId) {
+    return request(`/api/admin/provider-shops/${encodeURIComponent(shopId)}`, {
+      method: "DELETE"
+    });
+  },
   createProfile(payload) {
     return request("/api/admin/studio/profiles", { method: "POST", body: payload });
   },

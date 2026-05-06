@@ -516,9 +516,9 @@
               {{ shopMessage }}
             </div>
 
-            <div v-if="storefrontShops.length" class="space-y-3">
+            <div v-if="selectedProviderShops.length" class="space-y-3">
               <div
-                v-for="shop in storefrontShops"
+                v-for="shop in selectedProviderShops"
                 :key="shop.provider_id"
                 class="rounded-[1.5rem] border border-white/10 bg-white/[0.025] px-4 py-4"
               >
@@ -526,14 +526,24 @@
                   <div>
                     <p class="font-medium">{{ shop.provider_name }}</p>
                     <p class="mt-1 text-sm text-white/45">{{ shop.provider_id }}</p>
-                    <p class="mt-2 text-xs uppercase tracking-[0.16em] text-white/35">{{ shop.productCount }} products on user page</p>
+                    <p class="mt-2 text-xs uppercase tracking-[0.16em] text-white/35">{{ shop.product_count || 0 }} products in this shop</p>
                   </div>
-                  <span class="chip">store</span>
+                  <div class="flex items-center gap-2">
+                    <span class="chip">store</span>
+                    <button
+                      v-if="shop.owner_provider_id"
+                      class="rounded-full border border-red-400/20 bg-red-400/10 px-3 py-1 text-xs text-red-200 transition hover:bg-red-400/20"
+                      type="button"
+                      @click="removeShop(shop)"
+                    >
+                      Delete
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>
             <div v-else class="rounded-[1.5rem] border border-dashed border-white/10 px-4 py-8 text-center text-sm text-white/40">
-              No storefront shops loaded yet.
+              No shops loaded for this provider yet.
             </div>
           </article>
         </section>
@@ -642,26 +652,11 @@ export default {
     products() {
       return this.store?.products || [];
     },
-    storefrontShops() {
-      const map = new Map();
-      this.products.forEach((product) => {
-        const providerId = String(product.provider_id || "").trim();
-        if (!providerId) return;
-        const existing = map.get(providerId);
-        if (existing) {
-          existing.productCount += 1;
-          return;
-        }
-        map.set(providerId, {
-          provider_id: providerId,
-          provider_name: product.provider_name || providerId,
-          productCount: 1
-        });
-      });
-      return Array.from(map.values());
-    },
     selectedProviderInfo() {
       return this.providers.find((provider) => provider.provider_id === this.shopForm.provider_id) || null;
+    },
+    selectedProviderShops() {
+      return this.selectedProviderInfo?.shops || [];
     },
     orders() {
       return this.store?.orders || [];
@@ -825,6 +820,16 @@ export default {
       this.resetShopForm();
       this.shopMessage = `Created shop: ${createdName}`;
       await this.loadProviders();
+      await this.store.reloadAll();
+    },
+    async removeShop(shop) {
+      if (!window.confirm(`Delete shop "${shop.provider_name}"?`)) {
+        return;
+      }
+      await studioApi.deleteProviderShop(shop.provider_id);
+      this.shopMessage = `Deleted shop: ${shop.provider_name}`;
+      await this.loadProviders();
+      await this.store.reloadAll();
     }
   },
   watch: {

@@ -848,24 +848,66 @@ async def admin_provider_list(current_user: str = Depends(get_current_user)):
         ],
         "is_active": True,
     }).sort("created_at", 1).to_list(None)
+    raw_products = await db.db["products"].find({}).to_list(None)
+    product_counts = {}
+    for product in raw_products:
+        provider_id = str(product.get("provider_id") or "").strip()
+        if not provider_id:
+            continue
+        product_counts[provider_id] = product_counts.get(provider_id, 0) + 1
+
     provider_payloads = []
     for provider in providers:
         provider_id = str(provider.get("_id"))
         shops = await list_provider_shops(provider_id)
-        shop_names = [shop.get("provider_name", "") for shop in shops if shop.get("provider_name")]
+        detailed_shops = []
+        for shop in shops:
+            shop_id = str(shop.get("provider_id") or "")
+            detailed_shops.append({
+                **shop,
+                "product_count": product_counts.get(shop_id, 0),
+            })
+        shop_names = [shop.get("provider_name", "") for shop in detailed_shops if shop.get("provider_name")]
         provider_payloads.append(
             {
                 "provider_id": provider_id,
                 "provider_name": provider.get("username") or provider.get("email", "").split("@")[0] or provider_id,
                 "email": provider.get("email", ""),
-                "shop_count": len(shops),
+                "shop_count": len(detailed_shops),
                 "shop_names": shop_names,
+                "shops": detailed_shops,
             }
         )
 
     return {
         "providers": provider_payloads
     }
+
+
+@app.delete("/api/admin/provider-shops/{shop_id}")
+async def admin_delete_provider_shop(
+    shop_id: str,
+    current_user: str = Depends(get_current_user)
+):
+    """Admin: delete a child shop if it has no assigned products."""
+    await enforce_admin_access(current_user)
+    shop_object_id = parse_object_id(shop_id, "shop_id")
+    existing_shop = await db.db["users"].find_one({"_id": shop_object_id})
+    if not existing_shop or existing_shop.get("role") != "provider":
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Shop not found")
+
+    if not existing_shop.get("owner_provider_id"):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Primary provider cannot be deleted from here")
+
+    assigned_products = await db.db["products"].count_documents({"provider_id": shop_id})
+    if assigned_products > 0:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Cannot delete shop with {assigned_products} assigned products"
+        )
+
+    await db.db["users"].delete_one({"_id": shop_object_id})
+    return {"status": "deleted", "shop_id": shop_id}
 
 
 @app.post("/api/admin/provider-shops")
@@ -1871,7 +1913,7 @@ async def user_get_product(product_id: str):
 
 @app.get("/api/user/providers")
 async def user_get_providers():
-    """User: Get providers with active catalog items."""
+    """User: Get all storefront shops plus any providers with active catalog items."""
     raw_products = await db.db["products"].find({}).to_list(None)
     products = await enrich_products_with_provider_names(raw_products)
     providers = {}
@@ -1883,6 +1925,16 @@ async def user_get_providers():
             "provider_id": provider_id,
             "provider_name": product.get("provider_name", provider_id),
         }
+    shop_users = await db.db["users"].find({
+        "role": "provider",
+        "is_active": True,
+    }).to_list(None)
+    for shop_user in shop_users:
+        provider_id = str(shop_user.get("_id"))
+        providers.setdefault(provider_id, {
+            "provider_id": provider_id,
+            "provider_name": shop_user.get("username") or shop_user.get("email", "").split("@")[0] or provider_id,
+        })
     return {"providers": list(providers.values())}
 
 @app.post("/api/user/orders/preview")
