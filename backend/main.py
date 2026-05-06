@@ -458,6 +458,7 @@ async def list_provider_shops(owner_provider_id: str) -> List[dict]:
             "provider_name": owner.get("username") or owner.get("email", "").split("@")[0] or owner_provider_id,
             "email": owner.get("email", ""),
             "is_primary": True,
+            "owner_provider_id": None,
         })
         seen_shop_ids.add(owner_provider_id)
 
@@ -476,6 +477,7 @@ async def list_provider_shops(owner_provider_id: str) -> List[dict]:
             "provider_name": shop.get("username") or shop.get("email", "").split("@")[0] or shop_id,
             "email": shop.get("email", ""),
             "is_primary": False,
+            "owner_provider_id": owner_provider_id,
         })
         seen_shop_ids.add(shop_id)
 
@@ -498,6 +500,7 @@ async def list_provider_shops(owner_provider_id: str) -> List[dict]:
             "provider_name": provider_id,
             "email": "",
             "is_primary": False,
+            "owner_provider_id": None,
             "legacy": True,
             "source_product_name": sample_product.get("name", ""),
         })
